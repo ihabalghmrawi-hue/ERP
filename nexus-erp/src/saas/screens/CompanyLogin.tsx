@@ -11,9 +11,10 @@ import { uid, today } from "@/lib/engine/helpers";
 interface Props {
   onLogin: (company: Company, user: User) => void;
   onSuperAdmin: () => void;
+  onRegister: () => void;
 }
 
-export function CompanyLogin({ onLogin, onSuperAdmin }: Props) {
+export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
   const [step, setStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -117,7 +118,10 @@ export function CompanyLogin({ onLogin, onSuperAdmin }: Props) {
           )}
 
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
-            <span style={{ fontSize: 12, color: C.textMuted }}>يمكن لمسؤولي الشركة فقط تسجيل الدخول</span>
+            <span style={{ fontSize: 12, color: C.textMuted }}>ليس لديك حساب؟ </span>
+            <button style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }} onClick={onRegister}>
+              سجّل شركتك الآن
+            </button>
           </div>
         </div>
 

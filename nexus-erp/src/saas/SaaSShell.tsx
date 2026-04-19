@@ -18,6 +18,7 @@ import { SuperAdminLogin }   from "./screens/SuperAdminLogin";
 import { SuperAdminSetup }   from "./screens/SuperAdminSetup";
 import { SuperAdminPanel }   from "./screens/SuperAdminPanel";
 import { CompanyLogin }      from "./screens/CompanyLogin";
+import { CompanyRegister }   from "./screens/CompanyRegister";
 import { SubscriptionWall }  from "./screens/SubscriptionWall";
 import { ERPApp }            from "./ERPApp";
 
@@ -27,6 +28,7 @@ type RootScreen =
   | "super_login"         // super admin login
   | "super_panel"         // super admin dashboard
   | "company_login"       // tenant login
+  | "company_register"    // new company registration
   | "subscription_wall"   // expired / suspended
   | "erp"                 // main ERP app
 
@@ -175,6 +177,14 @@ export function SaaSShell() {
         <CompanyLogin
           onLogin={handleCompanyLogin}
           onSuperAdmin={() => setScreen("super_login")}
+          onRegister={() => setScreen("company_register")}
+        />
+      )}
+
+      {screen === "company_register" && (
+        <CompanyRegister
+          onRegistered={handleCompanyLogin}
+          onBack={() => setScreen("company_login")}
         />
       )}
 
