@@ -14,11 +14,9 @@ import { User } from "@/lib/db/database";
 import { C, S } from "@/lib/engine/design";
 import { Toast } from "@/components/ui/Toast";
 
-import { SuperAdminSetup }   from "./screens/SuperAdminSetup";
 import { SuperAdminLogin }   from "./screens/SuperAdminLogin";
 import { SuperAdminPanel }   from "./screens/SuperAdminPanel";
 import { CompanyLogin }      from "./screens/CompanyLogin";
-import { CompanyRegister }   from "./screens/CompanyRegister";
 import { SubscriptionWall }  from "./screens/SubscriptionWall";
 import { ERPApp }            from "./ERPApp";
 
@@ -28,7 +26,6 @@ type RootScreen =
   | "super_login"         // super admin login
   | "super_panel"         // super admin dashboard
   | "company_login"       // tenant login
-  | "company_register"    // new company sign up
   | "subscription_wall"   // expired / suspended
   | "erp"                 // main ERP app
 
@@ -46,7 +43,7 @@ export function SaaSShell() {
   // ── Boot: decide which screen to show ──────────────────
   useEffect(() => {
     const bootstrapped = SaaSDB.isBootstrapped();
-    if (!bootstrapped) { setScreen("saas_setup"); return; }
+    if (!bootstrapped) { setScreen("super_login"); return; }
 
     const session = SaaSDB.getSession();
     if (session?.type === "superadmin") {
@@ -142,10 +139,6 @@ export function SaaSShell() {
 
       {screen === "loading" && <LoadingScreen />}
 
-      {screen === "saas_setup" && (
-        <SuperAdminSetup onCreated={handleSuperAdminCreated} />
-      )}
-
       {screen === "super_login" && (
         <SuperAdminLogin
           onLogin={handleSuperLogin}
@@ -164,15 +157,7 @@ export function SaaSShell() {
       {screen === "company_login" && (
         <CompanyLogin
           onLogin={handleCompanyLogin}
-          onRegister={() => setScreen("company_register")}
           onSuperAdmin={() => setScreen("super_login")}
-        />
-      )}
-
-      {screen === "company_register" && (
-        <CompanyRegister
-          onRegistered={(co, user) => handleCompanyLogin(co, user)}
-          onBack={() => setScreen("company_login")}
         />
       )}
 

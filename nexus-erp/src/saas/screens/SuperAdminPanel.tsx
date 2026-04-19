@@ -4,7 +4,9 @@ import { useState } from "react";
 import { SaaSDB } from "../saasDB";
 import { Company, PLANS, PlanId, SuperAdmin } from "../types";
 import { C, S } from "@/lib/engine/design";
+import { User } from "@/lib/db/database";
 import { TenantDB } from "../tenantDB";
+import { uid, today } from "@/lib/engine/helpers";
 
 interface Props {
   admin: SuperAdmin;
@@ -332,14 +334,47 @@ function SubscriptionsManager({ companies, addToast, onRefresh }: { companies: C
 }
 
 function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", country: "SA", planId: "trial" as PlanId, trialDays: "14" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    country: "SA",
+    planId: "trial" as PlanId,
+    trialDays: "14",
+    adminName: "",
+    adminEmail: "",
+    adminPassword: "",
+  });
   const [error, setError] = useState("");
 
   const handle = () => {
-    if (!form.name || !form.email) { setError("الاسم والبريد مطلوبان"); return; }
+    if (!form.name || !form.email || !form.adminName || !form.adminEmail || !form.adminPassword) {
+      setError("الرجاء تعبئة بيانات الشركة ومعلومات المسؤول بالكامل");
+      return;
+    }
+    if (form.adminPassword.length < 6) {
+      setError("كلمة مرور المسؤول يجب أن تكون 6 أحرف على الأقل");
+      return;
+    }
     try {
-      SaaSDB.createCompany({ ...form, trialDays: +form.trialDays });
-      addToast(`تم إنشاء شركة "${form.name}" بنجاح ✅`, "success");
+      const company = SaaSDB.createCompany({ ...form, trialDays: +form.trialDays });
+      const db = TenantDB.load(company.id);
+      db.settings.companyName = form.name;
+      const user: User = {
+        id: uid(),
+        name: form.adminName,
+        email: form.adminEmail,
+        password: form.adminPassword,
+        role: "admin",
+        status: "active",
+        companyId: company.id,
+        lastLogin: new Date().toISOString(),
+        createdAt: today(),
+      };
+      db.users.push(user);
+      db.activityLog.unshift({ id: uid(), timestamp: new Date().toLocaleString("ar-SA"), userId: user.id, user: user.name, action: "CREATE", module: "Auth", description: "Created initial tenant admin" });
+      TenantDB.save();
+      addToast(`تم إنشاء شركة "${form.name}" والمشرف الأول بنجاح ✅`, "success");
       onCreated();
     } catch (e: any) { setError(e.message); }
   };
@@ -358,6 +393,20 @@ function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () 
           <input style={S.input} type={t} value={(form as any)[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={l.replace(" *", "")} />
         </div>
       ))}
+
+      <div style={{ marginTop: 20, padding: 16, background: C.surfaceAlt, borderRadius: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>بيانات مسؤول الشركة الأول</div>
+        {[
+          { k: "adminName", l: "اسم المسؤول *", t: "text" },
+          { k: "adminEmail", l: "البريد الإلكتروني للمسؤول *", t: "email" },
+          { k: "adminPassword", l: "كلمة مرور المسؤول *", t: "password" },
+        ].map(({ k, l, t }) => (
+          <div key={k} style={S.formGroup}>
+            <label style={S.label}>{l}</label>
+            <input style={S.input} type={t} value={(form as any)[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} placeholder={l.replace(" *", "")} />
+          </div>
+        ))}
+      </div>
       <div style={S.formGroup}>
         <label style={S.label}>الخطة</label>
         <select style={S.select} value={form.planId} onChange={e => setForm({ ...form, planId: e.target.value as PlanId })}>

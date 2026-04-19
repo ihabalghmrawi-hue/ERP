@@ -39,7 +39,8 @@ export function CompanyRegister({ onRegistered, onBack }: Props) {
       const user: User = {
         id: uid(), name: form.ownerName, email: form.email,
         password: form.password, role: "admin",
-        status: "active", lastLogin: new Date().toISOString(), createdAt: today(),
+        status: "active", companyId: company.id,
+        lastLogin: new Date().toISOString(), createdAt: today(),
       };
       db.users.push(user);
       TenantDB.save();

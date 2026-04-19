@@ -5,6 +5,7 @@ import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
 import { DB, User } from "@/lib/db/database";
+import { TenantDB } from "@/saas/tenantDB";
 import { uid, today } from "@/lib/engine/helpers";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
@@ -36,7 +37,8 @@ export function Users({ addToast }: Props) {
     const u: User = {
       id: uid(), name: form.name, email: form.email,
       password: form.password, role: form.role as User["role"],
-      status: "active", lastLogin: "—", createdAt: today(),
+      status: "active", companyId: TenantDB.getCurrentCompanyId() || undefined,
+      lastLogin: "—", createdAt: today(),
     };
     db.users.push(u);
     db.activityLog.unshift({

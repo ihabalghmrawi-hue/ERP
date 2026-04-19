@@ -148,6 +148,7 @@ export interface User {
   password: string;
   role: "admin" | "accountant" | "sales" | "viewer";
   status: "active" | "inactive";
+  companyId?: string;
   lastLogin: string;
   createdAt: string;
 }
@@ -160,6 +161,20 @@ export interface ActivityLog {
   action: string;
   module: string;
   description: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  date: string;
+  type: "in" | "out" | "transfer" | "adjustment";
+  productId: string;
+  productName: string;
+  fromWarehouseId?: string;
+  toWarehouseId?: string;
+  quantity: number;
+  reference: string;
+  notes?: string;
+  createdBy?: string;
 }
 
 export interface AppSettings {
@@ -182,16 +197,42 @@ export interface DatabaseState {
   purchaseOrders: PurchaseOrder[];
   treasury: TreasuryTransaction[];
   warehouses: Warehouse[];
+  inventoryMovements: InventoryMovement[];
   activityLog: ActivityLog[];
   settings: AppSettings;
   counters: { je: number; inv: number; po: number; tx: number };
 }
 
+// ─── Default Chart of Accounts ─────────────────────────────────
+export function createDefaultAccounts(): Account[] {
+  return [
+    { id: "acc_1000", code: "1000", name: "الأصول", type: "asset", category: "asset_group", balance: 0 },
+    { id: "acc_1010", code: "1010", name: "الصندوق", type: "asset", category: "current_asset", parentId: "acc_1000", balance: 0 },
+    { id: "acc_1020", code: "1020", name: "البنك", type: "asset", category: "current_asset", parentId: "acc_1000", balance: 0 },
+    { id: "acc_1100", code: "1100", name: "الذمم المدينة", type: "asset", category: "current_asset", parentId: "acc_1000", balance: 0 },
+    { id: "acc_1200", code: "1200", name: "المخزون", type: "asset", category: "current_asset", parentId: "acc_1000", balance: 0 },
+
+    { id: "acc_2000", code: "2000", name: "الخصوم", type: "liability", category: "liability_group", balance: 0 },
+    { id: "acc_2010", code: "2010", name: "الذمم الدائنة", type: "liability", category: "current_liability", parentId: "acc_2000", balance: 0 },
+    { id: "acc_2200", code: "2200", name: "ضريبة المبيعات", type: "liability", category: "current_liability", parentId: "acc_2000", balance: 0 },
+
+    { id: "acc_3000", code: "3000", name: "حقوق الملكية", type: "equity", category: "equity", balance: 0 },
+
+    { id: "acc_4000", code: "4000", name: "إيراد المبيعات", type: "revenue", category: "revenue", balance: 0 },
+    { id: "acc_4010", code: "4010", name: "عائدات أخرى", type: "revenue", category: "revenue", balance: 0 },
+
+    { id: "acc_5000", code: "5000", name: "تكلفة البضاعة المباعة", type: "cogs", category: "cogs", balance: 0 },
+
+    { id: "acc_6000", code: "6000", name: "المصروفات التشغيلية", type: "expense", category: "expense", balance: 0 },
+    { id: "acc_6010", code: "6010", name: "مصاريف الشحن والتسليم", type: "expense", category: "expense", balance: 0 },
+  ];
+}
+
 // ─── Initial State ────────────────────────────────────────────
-function createInitialState(): DatabaseState {
+export function createInitialDatabaseState(): DatabaseState {
   return {
     users: [],
-    accounts: [],
+    accounts: createDefaultAccounts(),
     journalEntries: [],
     customers: [],
     suppliers: [],
@@ -200,6 +241,7 @@ function createInitialState(): DatabaseState {
     purchaseOrders: [],
     treasury: [],
     warehouses: [],
+    inventoryMovements: [],
     activityLog: [],
     settings: {
       companyName: "",
@@ -211,6 +253,10 @@ function createInitialState(): DatabaseState {
     },
     counters: { je: 1, inv: 1, po: 1, tx: 1 },
   };
+}
+
+function createInitialState(): DatabaseState {
+  return createInitialDatabaseState();
 }
 
 // ─── Database Singleton with localStorage ────────────────────

@@ -44,11 +44,6 @@ export function Purchases({ addToast }: Props) {
     try {
       const je = AccountingEngine.postPurchaseInvoice(po);
       po.journalEntryId = je.id;
-      form.lines.forEach((l) => {
-        const p = db.products.find((x) => x.id === l.productId);
-        if (p) p.qty = (p.qty || 0) + l.qty;
-      });
-      supp.balance = (supp.balance || 0) + formTotal;
       db.purchaseOrders.unshift(po);
       DB.save();
       setPOs([...db.purchaseOrders]);

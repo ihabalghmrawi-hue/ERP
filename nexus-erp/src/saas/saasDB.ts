@@ -21,13 +21,39 @@ function createInitialSaaS(): SaaSDatabase {
 // ─── SaaS DB Singleton ────────────────────────────────────
 let _saas: SaaSDatabase | null = null;
 
+function getSuperAdminSeed(): { name: string; email: string; password: string } | null {
+  const name = process.env.NEXT_PUBLIC_SUPER_ADMIN_NAME || process.env.SUPER_ADMIN_NAME || "مدير النظام";
+  const email = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || process.env.SUPER_ADMIN_EMAIL;
+  const password = process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD || process.env.SUPER_ADMIN_PASSWORD;
+  if (!email || !password) return null;
+  return { name, email, password };
+}
+
+function ensureSuperAdminSeeded(state: SaaSDatabase): void {
+  if (state.superAdmins.length > 0) return;
+  const seed = getSuperAdminSeed();
+  if (!seed) return;
+  state.superAdmins.push({
+    id: uid(),
+    name: seed.name,
+    email: seed.email,
+    password: seed.password,
+    role: "superadmin",
+    createdAt: now(),
+    lastLogin: now(),
+  });
+  saveSaaS(state);
+}
+
 function loadSaaS(): SaaSDatabase {
   if (typeof window === "undefined") return createInitialSaaS();
+  let state = createInitialSaaS();
   try {
     const raw = localStorage.getItem(SAAS_KEY);
-    if (raw) return JSON.parse(raw) as SaaSDatabase;
+    if (raw) state = JSON.parse(raw) as SaaSDatabase;
   } catch {}
-  return createInitialSaaS();
+  ensureSuperAdminSeeded(state);
+  return state;
 }
 
 function saveSaaS(state: SaaSDatabase): void {
@@ -70,6 +96,9 @@ export const SaaSDB = {
   // ── Super Admin ────────────────────────────────────────
   createSuperAdmin(name: string, email: string, password: string): SuperAdmin {
     const db = this.get();
+    if (db.superAdmins.length > 0) {
+      throw new Error("تم إنشاء مدير النظام مسبقاً. لا يمكن إنشاء حساب Super Admin آخر.");
+    }
     if (db.superAdmins.find(a => a.email === email)) {
       throw new Error("البريد الإلكتروني مستخدم بالفعل");
     }

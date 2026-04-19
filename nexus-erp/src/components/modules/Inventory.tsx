@@ -6,6 +6,7 @@ import { useLang } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
 import { DB, Product, Warehouse } from "@/lib/db/database";
 import { AccountingEngine } from "@/lib/engine/accounting";
+import { InventoryManager } from "@/lib/engine/inventory";
 import { fmt, fmtNum, uid, logActivity } from "@/lib/engine/helpers";
 import { KPI }        from "@/components/ui/KPI";
 import { DataTable }  from "@/components/ui/DataTable";
@@ -17,6 +18,7 @@ interface Props { addToast: (msg: string, type?: "success" | "error" | "info") =
 
 const emptyProd = { name: "", sku: "", category: "", warehouseId: "", unitCost: "", sellPrice: "", taxRate: "15", qty: "0", reorderPoint: "5", unit: "" };
 const emptyWH   = { name: "", location: "", manager: "" };
+const emptyTransfer = { productId: "", fromWarehouseId: "", toWarehouseId: "", qty: "", notes: "" };
 
 export function Inventory({ addToast }: Props) {
   const { t } = useLang();
@@ -27,15 +29,19 @@ export function Inventory({ addToast }: Props) {
   const rerender = () => tick((x) => x + 1);
 
   const [search, setSearch]         = useState("");
+  const [activeTab, setActiveTab]   = useState<"products" | "transfers" | "movements">("products");
   const [showProduct, setShowProduct] = useState(false);
   const [showWH, setShowWH]           = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [prodForm, setProdForm]       = useState({ ...emptyProd });
   const [whForm, setWhForm]           = useState({ ...emptyWH });
+  const [transferForm, setTransferForm] = useState({ ...emptyTransfer });
 
   const inv       = AccountingEngine.getInventoryValuation();
   const filtered  = inv.filter((p) => p.name?.includes(search) || p.sku?.includes(search));
   const totalValue = inv.reduce((s, p) => s + p.value, 0);
-  const lowStock   = inv.filter((p) => (p.qty || 0) <= (p.reorderPoint || 0));
+  const lowStock   = InventoryManager.getLowStockItems();
+  const report     = InventoryManager.getInventoryReport();
 
   const handleAddProduct = () => {
     if (!prodForm.name || !prodForm.sku) { addToast(t("fillRequired"), "error"); return; }
@@ -48,6 +54,7 @@ export function Inventory({ addToast }: Props) {
       unit: prodForm.unit,
     };
     db.products.push(product);
+    InventoryManager.recordMovement("in", product.id, product.qty, `PROD-CREATION-${product.id}`, { notes: `إنشاء المنتج ${product.name}`, createdBy: user?.name });
     DB.save();
     rerender();
     logActivity(user?.id || "", user?.name || "", "CREATE", "Inventory", `أضاف المنتج ${product.name}`);
@@ -67,6 +74,30 @@ export function Inventory({ addToast }: Props) {
     setWhForm({ ...emptyWH });
   };
 
+  const handleTransfer = () => {
+    if (!transferForm.productId || !transferForm.fromWarehouseId || !transferForm.toWarehouseId || !transferForm.qty) {
+      addToast(t("fillRequired"), "error");
+      return;
+    }
+    try {
+      InventoryManager.transferProduct(
+        transferForm.productId,
+        +transferForm.qty,
+        transferForm.fromWarehouseId,
+        transferForm.toWarehouseId,
+        transferForm.notes || undefined,
+        user?.name
+      );
+      rerender();
+      logActivity(user?.id || "", user?.name || "", "UPDATE", "Inventory", `حول منتج بين المستودعات`);
+      addToast(t("transferSuccess"), "success");
+      setShowTransfer(false);
+      setTransferForm({ ...emptyTransfer });
+    } catch (e: any) {
+      addToast(e.message, "error");
+    }
+  };
+
   return (
     <div>
       <div style={S.pageTitle}>{t("inventoryManagement")}</div>
@@ -79,40 +110,67 @@ export function Inventory({ addToast }: Props) {
         <KPI label={t("warehouses")}     value={db.warehouses.length} color={C.purple}   icon="🏭" />
       </div>
 
-      <div style={S.card}>
-        <div style={S.sectionHeader}>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={{ ...S.btn("outline") }} onClick={() => setShowWH(true)}>{t("addWarehouse")}</button>
-            <button style={{ ...S.btn("primary"), border: "none" }} onClick={() => setShowProduct(true)}>{t("newProduct")}</button>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input style={{ ...S.input, width: 220 }} placeholder={t("searchProducts")} value={search} onChange={(e) => setSearch(e.target.value)} />
-            <div style={S.sectionTitle}>{t("productInventory")} ({db.products.length})</div>
-          </div>
-        </div>
-        <DataTable
-          headers={[
-            { label: t("status") }, { label: t("stockValue") }, { label: t("margin") },
-            { label: t("sellPrice") }, { label: t("unitCost") }, { label: t("qty") },
-            { label: t("warehouse") }, { label: t("category") }, { label: t("productName") }, { label: t("sku") },
-          ]}
-          rows={filtered.map((p) => [
-            <StatusBadge key="st" status={(p.qty || 0) <= (p.reorderPoint || 0) ? "overdue" : "active"} />,
-            <span key="val" style={{ fontWeight: 700, color: C.accentMid }}>{fmt(p.value)}</span>,
-            <span key="mg" style={{ color: C.success, fontWeight: 700 }}>{p.margin}%</span>,
-            fmt(p.sellPrice), fmt(p.unitCost),
-            <span key="qty" style={{ fontWeight: 800, color: (p.qty || 0) <= (p.reorderPoint || 0) ? C.danger : C.text }}>{fmtNum(p.qty || 0)} {p.unit}</span>,
-            p.warehouseId ? (db.warehouses.find((w) => w.id === p.warehouseId)?.name || p.warehouseId) : "—",
-            p.category || "—",
-            <span key="name" style={{ fontWeight: 700 }}>{p.name}</span>,
-            <span key="sku" style={{ color: C.textMuted, fontSize: 12 }}>{p.sku}</span>,
-          ])}
-          emptyMsg={t("noProductsYet")}
-        />
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, borderBottom: `2px solid ${C.border}` }}>
+        {(["products", "transfers", "movements"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: "10px 16px",
+              fontSize: 14,
+              fontWeight: activeTab === tab ? 700 : 500,
+              color: activeTab === tab ? C.accentMid : C.textMuted,
+              background: "none",
+              border: "none",
+              borderBottom: activeTab === tab ? `3px solid ${C.accentMid}` : "none",
+              cursor: "pointer",
+              marginBottom: -2,
+            }}
+          >
+            {tab === "products" && t("productInventory")} {tab === "transfers" && "تحويلات المخزون"} {tab === "movements" && "حركات المخزون"}
+          </button>
+        ))}
       </div>
 
+      {/* Products Tab */}
+      {activeTab === "products" && (
+        <div style={S.card}>
+          <div style={S.sectionHeader}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={{ ...S.btn("outline") }} onClick={() => setShowWH(true)}>{t("addWarehouse")}</button>
+              <button style={{ ...S.btn("primary"), border: "none" }} onClick={() => setShowProduct(true)}>{t("newProduct")}</button>
+              {db.warehouses.length > 0 && <button style={{ ...S.btn("outline") }} onClick={() => setShowTransfer(true)}>تحويل مخزون</button>}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input style={{ ...S.input, width: 220 }} placeholder={t("searchProducts")} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div style={S.sectionTitle}>{t("productInventory")} ({db.products.length})</div>
+            </div>
+          </div>
+          <DataTable
+            headers={[
+              { label: t("status") }, { label: t("stockValue") }, { label: t("margin") },
+              { label: t("sellPrice") }, { label: t("unitCost") }, { label: t("qty") },
+              { label: t("warehouse") }, { label: t("category") }, { label: t("productName") }, { label: t("sku") },
+            ]}
+            rows={filtered.map((p) => [
+              <StatusBadge key="st" status={(p.qty || 0) <= (p.reorderPoint || 0) ? "overdue" : "active"} />,
+              <span key="val" style={{ fontWeight: 700, color: C.accentMid }}>{fmt(p.value)}</span>,
+              <span key="mg" style={{ color: C.success, fontWeight: 700 }}>{p.margin}%</span>,
+              fmt(p.sellPrice), fmt(p.unitCost),
+              <span key="qty" style={{ fontWeight: 800, color: (p.qty || 0) <= (p.reorderPoint || 0) ? C.danger : C.text }}>{fmtNum(p.qty || 0)} {p.unit}</span>,
+              p.warehouseId ? (db.warehouses.find((w) => w.id === p.warehouseId)?.name || p.warehouseId) : "—",
+              p.category || "—",
+              <span key="name" style={{ fontWeight: 700 }}>{p.name}</span>,
+              <span key="sku" style={{ color: C.textMuted, fontSize: 12 }}>{p.sku}</span>,
+            ])}
+            emptyMsg={t("noProductsYet")}
+          />
+        </div>
+      )}
+
       {/* Warehouses card */}
-      {db.warehouses.length > 0 && (
+      {activeTab === "products" && db.warehouses.length > 0 && (
         <div style={S.card}>
           <div style={S.sectionTitle}>{t("warehouses")}</div>
           <div style={{ marginTop: 12 }}>
@@ -135,6 +193,100 @@ export function Inventory({ addToast }: Props) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Low Stock Alert */}
+      {activeTab === "products" && lowStock.length > 0 && (
+        <div style={{ ...S.card, borderLeft: `4px solid ${C.danger}` }}>
+          <div style={{ ...S.sectionTitle, color: C.danger }}>⚠️ تنبيهات المخزون المنخفض</div>
+          <div style={{ marginTop: 12 }}>
+            {lowStock.map((p) => (
+              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: C.text }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>{p.sku}</div>
+                </div>
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ color: C.danger, fontWeight: 700 }}>متوفر: {fmtNum(p.qty || 0)} {p.unit}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>الحد الأدنى: {fmtNum(p.reorderPoint || 0)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Transfers Tab */}
+      {activeTab === "transfers" && (
+        <div style={S.card}>
+          <div style={S.sectionHeader}>
+            <div style={S.sectionTitle}>تحويلات المخزون بين المستودعات</div>
+            {db.warehouses.length >= 2 && <button style={{ ...S.btn("primary"), border: "none" }} onClick={() => setShowTransfer(true)}>تحويل جديد</button>}
+          </div>
+          {db.warehouses.length < 2 ? (
+            <EmptyState icon="📦" title="لا توجد مستودعات كافية" desc="أنشئ مستودعين على الأقل لتفعيل التحويلات" />
+          ) : (
+            <DataTable
+              headers={[{ label: "تاريخ" }, { label: "المنتج" }, { label: "الكمية" }, { label: "من" }, { label: "إلى" }, { label: "ملاحظات" }]}
+              rows={db.inventoryMovements
+                .filter((m) => m.type === "transfer")
+                .slice(-20)
+                .reverse()
+                .map((m) => [
+                  m.date,
+                  <span key="prod" style={{ fontWeight: 700 }}>{m.productName}</span>,
+                  <span key="qty" style={{ fontWeight: 700, color: C.accentMid }}>{fmtNum(m.quantity)}</span>,
+                  db.warehouses.find((w) => w.id === m.fromWarehouseId)?.name || "—",
+                  db.warehouses.find((w) => w.id === m.toWarehouseId)?.name || "—",
+                  <span key="notes" style={{ fontSize: 12, color: C.textMuted }}>{m.notes || "—"}</span>,
+                ])}
+              emptyMsg="لا توجد تحويلات"
+            />
+          )}
+        </div>
+      )}
+
+      {/* Movements Tab */}
+      {activeTab === "movements" && (
+        <div style={S.card}>
+          <div style={S.sectionTitle}>سجل حركات المخزون</div>
+          <DataTable
+            headers={[{ label: "تاريخ" }, { label: "النوع" }, { label: "المنتج" }, { label: "الكمية" }, { label: "المرجع" }, { label: "الملاحظات" }]}
+            rows={db.inventoryMovements
+              .slice(-50)
+              .reverse()
+              .map((m) => [
+                m.date,
+                <span
+                  key="type"
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background:
+                      m.type === "in"
+                        ? C.successLight
+                        : m.type === "out"
+                        ? C.dangerLight
+                        : m.type === "transfer"
+                        ? C.accentLight
+                        : C.warningLight,
+                    color: m.type === "in" ? C.success : m.type === "out" ? C.danger : m.type === "transfer" ? C.accentMid : C.warning,
+                  }}
+                >
+                  {m.type === "in" ? "إدخال" : m.type === "out" ? "إخراج" : m.type === "transfer" ? "تحويل" : "تعديل"}
+                </span>,
+                <span key="prod" style={{ fontWeight: 700 }}>{m.productName}</span>,
+                <span key="qty" style={{ fontWeight: 700, color: m.type === "out" ? C.danger : C.success }}>
+                  {m.type === "out" ? "-" : "+"}{fmtNum(m.quantity)}
+                </span>,
+                <span key="ref" style={{ fontSize: 12, color: C.textMuted }}>{m.reference}</span>,
+                <span key="notes" style={{ fontSize: 12, color: C.textMuted }}>{m.notes || "—"}</span>,
+              ])}
+            emptyMsg="لا توجد حركات مخزون"
+          />
         </div>
       )}
 
@@ -173,6 +325,45 @@ export function Inventory({ addToast }: Props) {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
             <button style={{ ...S.btn("outline") }} onClick={() => setShowWH(false)}>{t("cancel")}</button>
             <button style={{ ...S.btn("primary"), border: "none" }} onClick={handleAddWH}>{t("save")}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Transfer Stock */}
+      {showTransfer && db.warehouses.length >= 2 && (
+        <Modal title="تحويل مخزون" onClose={() => setShowTransfer(false)}>
+          <div style={S.formGroup}>
+            <label style={S.label}>المنتج</label>
+            <select style={S.select} value={transferForm.productId} onChange={(e) => setTransferForm({ ...transferForm, productId: e.target.value })}>
+              <option value="">— اختر منتج</option>
+              {db.products.map((p) => <option key={p.id} value={p.id}>{p.name} ({fmtNum(p.qty || 0)} متاح)</option>)}
+            </select>
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>المستودع المصدر</label>
+            <select style={S.select} value={transferForm.fromWarehouseId} onChange={(e) => setTransferForm({ ...transferForm, fromWarehouseId: e.target.value })}>
+              <option value="">— اختر مستودع</option>
+              {db.warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>المستودع الهدف</label>
+            <select style={S.select} value={transferForm.toWarehouseId} onChange={(e) => setTransferForm({ ...transferForm, toWarehouseId: e.target.value })}>
+              <option value="">— اختر مستودع</option>
+              {db.warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>الكمية</label>
+            <input style={S.input} type="number" value={transferForm.qty} onChange={(e) => setTransferForm({ ...transferForm, qty: e.target.value })} placeholder="0" />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>ملاحظات</label>
+            <input style={S.input} value={transferForm.notes} onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })} placeholder="اختياري" />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+            <button style={{ ...S.btn("outline") }} onClick={() => setShowTransfer(false)}>{t("cancel")}</button>
+            <button style={{ ...S.btn("primary"), border: "none" }} onClick={handleTransfer}>تحويل</button>
           </div>
         </Modal>
       )}

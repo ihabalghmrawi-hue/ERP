@@ -10,11 +10,10 @@ import { uid, today } from "@/lib/engine/helpers";
 
 interface Props {
   onLogin: (company: Company, user: User) => void;
-  onRegister: () => void;
   onSuperAdmin: () => void;
 }
 
-export function CompanyLogin({ onLogin, onRegister, onSuperAdmin }: Props) {
+export function CompanyLogin({ onLogin, onSuperAdmin }: Props) {
   const [step, setStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -46,19 +45,9 @@ export function CompanyLogin({ onLogin, onRegister, onSuperAdmin }: Props) {
     setError("");
     const db = TenantDB.load(company.id);
 
-    // Check if tenant has users at all
+    // Prevent public first-login registration for tenant companies
     if (db.users.length === 0) {
-      // First login — auto-create first admin user
-      const user: User = {
-        id: uid(), name: company.name, email: userEmail,
-        password: password, role: "admin",
-        status: "active", lastLogin: new Date().toISOString(), createdAt: today(),
-      };
-      if (password.length < 4) { setError("كلمة المرور قصيرة جداً"); return; }
-      db.users.push(user);
-      db.activityLog.unshift({ id: uid(), timestamp: new Date().toLocaleString("ar-SA"), userId: user.id, user: user.name, action: "LOGIN", module: "Auth", description: "أول دخول للنظام" });
-      TenantDB.save();
-      onLogin(company, user);
+      setError("لا يوجد مستخدم مسجل لهذه الشركة. يرجى التواصل مع المدير العام لإنشاء حساب.");
       return;
     }
 
@@ -128,9 +117,7 @@ export function CompanyLogin({ onLogin, onRegister, onSuperAdmin }: Props) {
           )}
 
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
-            <button style={{ ...S.btn("ghost"), fontSize: 12, color: C.accent, border: "none" }} onClick={onRegister}>
-              ليس لديك حساب؟ سجّل الآن مجاناً
-            </button>
+            <span style={{ fontSize: 12, color: C.textMuted }}>يمكن لمسؤولي الشركة فقط تسجيل الدخول</span>
           </div>
         </div>
 

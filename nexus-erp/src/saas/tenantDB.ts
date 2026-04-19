@@ -1,6 +1,6 @@
 "use client";
 
-import { DatabaseState } from "@/lib/db/database";
+import { DatabaseState, createInitialDatabaseState } from "@/lib/db/database";
 
 // ─── Per-tenant storage ────────────────────────────────────
 // Each company gets its own localStorage key: nexus_tenant_{companyId}
@@ -11,28 +11,7 @@ function getKey(companyId: string): string {
 }
 
 function createInitialTenantState(): DatabaseState {
-  return {
-    users: [],
-    accounts: [],
-    journalEntries: [],
-    customers: [],
-    suppliers: [],
-    products: [],
-    invoices: [],
-    purchaseOrders: [],
-    treasury: [],
-    warehouses: [],
-    activityLog: [],
-    settings: {
-      companyName: "",
-      taxNumber: "",
-      address: "",
-      baseCurrency: "SAR",
-      fiscalYearStart: "01-01",
-      lang: "ar",
-    },
-    counters: { je: 1, inv: 1, po: 1, tx: 1 },
-  };
+  return createInitialDatabaseState();
 }
 
 // ─── In-memory cache — only ONE tenant loaded at a time ───

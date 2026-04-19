@@ -63,11 +63,6 @@ export function Sales({ addToast }: Props) {
     try {
       const je = AccountingEngine.postSalesInvoice(invoice);
       invoice.journalEntryId = je.id;
-      form.lines.forEach((l) => {
-        const p = db.products.find((x) => x.id === l.productId);
-        if (p) p.qty = (p.qty || 0) - l.qty;
-      });
-      if (form.paymentType === "credit") cust.balance = (cust.balance || 0) + formTotal;
       db.invoices.unshift(invoice);
       DB.save();
       setInvoices([...db.invoices]);

@@ -1,0 +1,18 @@
+{
+  "companies": [],
+  "superAdmins": [
+    {
+      "id": "fbf4cf686a21ced1",
+      "name": "Super Admin",
+      "email": "ihabalghmrawi@gmail.com",
+      "password": "scrypt$5bd862fcd8b64739c07974fbee227052$eeb942886b194a39aa11a6aa1c94734c140ef5d378afafa824dd66937b82e3ec76e3ffa16e3313aad36480b4b99677edff56f5f64a36334daa37267cc087e522",
+      "role": "superadmin",
+      "createdAt": "2026-04-19T15:04:38.511Z",
+      "lastLogin": "2026-04-19T15:04:38.511Z"
+    }
+  ],
+  "globalCounters": {
+    "company": 1,
+    "subscription": 1
+  }
+}
