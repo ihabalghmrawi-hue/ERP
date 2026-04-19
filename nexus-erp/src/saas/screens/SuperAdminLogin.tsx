@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { SaaSDB } from "../saasDB";
 import { SuperAdmin } from "../types";
 import { C, S } from "@/lib/engine/design";
 
@@ -13,11 +12,25 @@ interface Props {
 export function SuperAdminLogin({ onLogin, onGoToCompanyLogin }: Props) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handle = () => {
-    const admin = SaaSDB.loginSuperAdmin(form.email, form.password);
-    if (!admin) { setError("بيانات الدخول غير صحيحة"); return; }
-    onLogin(admin);
+  const handle = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/super-admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email, password: form.password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "بيانات الدخول غير صحيحة"); return; }
+      onLogin(data);
+    } catch {
+      setError("حدث خطأ، حاول مجدداً");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,14 +46,14 @@ export function SuperAdminLogin({ onLogin, onGoToCompanyLogin }: Props) {
           <div key={k} style={S.formGroup}>
             <label style={S.label}>{l}</label>
             <input style={S.input} type={t} value={(form as any)[k]} onChange={e => setForm({ ...form, [k]: e.target.value })}
-              onKeyDown={e => e.key === "Enter" && handle()} placeholder={l} />
+              onKeyDown={e => { if (e.key === "Enter") handle(); }} placeholder={l} />
           </div>
         ))}
 
         {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
 
-        <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none" }} onClick={handle}>
-          دخول
+        <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }} onClick={handle} disabled={loading}>
+          {loading ? "جارٍ التحقق..." : "دخول"}
         </button>
         <button style={{ ...S.btn("ghost"), width: "100%", marginTop: 10, fontSize: 12, border: "none" }} onClick={onGoToCompanyLogin}>
           ← العودة لدخول الشركات
