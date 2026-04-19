@@ -62,7 +62,7 @@ export function SuperAdminLogin({ onLogin, onGoToCompanyLogin, onReset }: Props)
             <div style={{ fontSize: 12, color: "#cf1322", marginBottom: 8 }}>⚠️ سيتم حذف حساب المدير العام وجميع بيانات الجلسة. هل أنت متأكد؟</div>
             <div style={{ display: "flex", gap: 8 }}>
               <button style={{ flex: 1, padding: "6px 0", background: "#ff4d4f", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
-                onClick={() => { SaaSDB.resetSuperAdmin(); onReset(); }}>
+                onClick={() => { SaaSDB.resetSuperAdmin(); if (onReset) onReset(); }}>
                 نعم، إعادة الإعداد
               </button>
               <button style={{ flex: 1, padding: "6px 0", background: "#f5f5f5", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
