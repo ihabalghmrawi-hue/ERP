@@ -21,30 +21,6 @@ function createInitialSaaS(): SaaSDatabase {
 // ─── SaaS DB Singleton ────────────────────────────────────
 let _saas: SaaSDatabase | null = null;
 
-function getSuperAdminSeed(): { name: string; email: string; password: string } | null {
-  const name = process.env.NEXT_PUBLIC_SUPER_ADMIN_NAME || process.env.SUPER_ADMIN_NAME || "مدير النظام";
-  const email = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || process.env.SUPER_ADMIN_EMAIL || null;
-  const password = process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD || process.env.SUPER_ADMIN_PASSWORD || null;
-  if (!email || !password) return null;
-  return { name, email, password };
-}
-
-function ensureSuperAdminSeeded(state: SaaSDatabase): void {
-  if (state.superAdmins.length > 0) return;
-  const seed = getSuperAdminSeed();
-  if (!seed) return;
-  state.superAdmins.push({
-    id: uid(),
-    name: seed.name,
-    email: seed.email,
-    password: seed.password,
-    role: "superadmin",
-    createdAt: now(),
-    lastLogin: now(),
-  });
-  saveSaaS(state);
-}
-
 function loadSaaS(): SaaSDatabase {
   if (typeof window === "undefined") return createInitialSaaS();
   let state = createInitialSaaS();
@@ -52,7 +28,6 @@ function loadSaaS(): SaaSDatabase {
     const raw = localStorage.getItem(SAAS_KEY);
     if (raw) state = JSON.parse(raw) as SaaSDatabase;
   } catch {}
-  ensureSuperAdminSeeded(state);
   return state;
 }
 

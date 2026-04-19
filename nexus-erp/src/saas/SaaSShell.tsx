@@ -11,10 +11,11 @@ import { useToast } from "@/hooks/useToast";
 import { DB } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
 import { User } from "@/lib/db/database";
-import { C, S } from "@/lib/engine/design";
+import { C } from "@/lib/engine/design";
 import { Toast } from "@/components/ui/Toast";
 
 import { SuperAdminLogin }   from "./screens/SuperAdminLogin";
+import { SuperAdminSetup }   from "./screens/SuperAdminSetup";
 import { SuperAdminPanel }   from "./screens/SuperAdminPanel";
 import { CompanyLogin }      from "./screens/CompanyLogin";
 import { SubscriptionWall }  from "./screens/SubscriptionWall";
@@ -43,7 +44,7 @@ export function SaaSShell() {
   // ── Boot: decide which screen to show ──────────────────
   useEffect(() => {
     const bootstrapped = SaaSDB.isBootstrapped();
-    if (!bootstrapped) { setScreen("super_login"); return; }
+    if (!bootstrapped) { setScreen("saas_setup"); return; }
 
     const session = SaaSDB.getSession();
     if (session?.type === "superadmin") {
@@ -139,10 +140,15 @@ export function SaaSShell() {
 
       {screen === "loading" && <LoadingScreen />}
 
+      {screen === "saas_setup" && (
+        <SuperAdminSetup onCreated={handleSuperAdminCreated} />
+      )}
+
       {screen === "super_login" && (
         <SuperAdminLogin
           onLogin={handleSuperLogin}
           onGoToCompanyLogin={() => setScreen("company_login")}
+          onReset={() => setScreen("saas_setup")}
         />
       )}
 
