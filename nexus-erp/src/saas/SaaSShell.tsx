@@ -47,13 +47,24 @@ export function SaaSShell() {
   useEffect(() => {
     fetch("/api/setup")
       .then(r => r.json())
-      .then(({ bootstrapped }) => {
+      .then(async ({ bootstrapped }) => {
         if (!bootstrapped) {
           SaaSDB.resetSuperAdmin();
           SaaSDB.clearSession();
           setScreen("saas_setup");
           return;
         }
+        // Sync companies from server to local memory
+        try {
+          const res = await fetch("/api/saas-data");
+          if (res.ok) {
+            const { companies, globalCounters } = await res.json();
+            const db = SaaSDB.get();
+            db.companies = companies;
+            db.globalCounters = globalCounters;
+            SaaSDB.save();
+          }
+        } catch {}
         boot();
       })
       .catch(() => boot());
