@@ -25,11 +25,12 @@ export function SuperAdminSetup({ onCreated }: Props) {
       const res = await fetch("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setupKey: form.setupKey }),
+        body: JSON.stringify({ setupKey: form.setupKey, name: form.name, email: form.email, password: form.password }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "مفتاح الإعداد غير صحيح"); setLoading(false); return; }
 
+      // Sync to localStorage for current session
       const admin = SaaSDB.createSuperAdmin(form.name, form.email, form.password);
       onCreated(admin);
     } catch {

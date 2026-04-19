@@ -43,16 +43,21 @@ export function SaaSShell() {
 
   // ── Boot: decide which screen to show ──────────────────
   useEffect(() => {
-    // Auto-reset if stored password is a server-side hash (can't be verified client-side)
-    const hasStaleHashedAdmin = SaaSDB.get().superAdmins.some(a => a.password.includes("$"));
-    if (hasStaleHashedAdmin) {
-      SaaSDB.resetSuperAdmin();
-      SaaSDB.clearSession();
-    }
+    fetch("/api/setup")
+      .then(r => r.json())
+      .then(({ bootstrapped }) => {
+        if (!bootstrapped) {
+          SaaSDB.resetSuperAdmin();
+          SaaSDB.clearSession();
+          setScreen("saas_setup");
+          return;
+        }
+        boot();
+      })
+      .catch(() => boot());
+  }, []);
 
-    const bootstrapped = SaaSDB.isBootstrapped();
-    if (!bootstrapped) { setScreen("saas_setup"); return; }
-
+  function boot() {
     const session = SaaSDB.getSession();
     if (session?.type === "superadmin") {
       const admin = SaaSDB.get().superAdmins.find(a => a.id === session.id);
@@ -76,7 +81,7 @@ export function SaaSShell() {
     }
 
     setScreen("company_login");
-  }, []);
+  }
 
   // ── Handlers ───────────────────────────────────────────
   const handleSuperAdminCreated = (admin: SuperAdmin) => {
