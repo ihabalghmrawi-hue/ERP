@@ -23,10 +23,15 @@ let _saas: SaaSDatabase | null = null;
 
 function getSuperAdminSeed(): { name: string; email: string; password: string } | null {
   const name = process.env.NEXT_PUBLIC_SUPER_ADMIN_NAME || process.env.SUPER_ADMIN_NAME || "مدير النظام";
-  const email = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || process.env.SUPER_ADMIN_EMAIL;
-  const password = process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD || process.env.SUPER_ADMIN_PASSWORD;
+  const email = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || process.env.SUPER_ADMIN_EMAIL || "ihabalghmrawi@gmail.com";
+  const password = process.env.NEXT_PUBLIC_SUPER_ADMIN_PASSWORD || process.env.SUPER_ADMIN_PASSWORD || "Ehab8798@@";
   if (!email || !password) return null;
   return { name, email, password };
+}
+
+function isDefaultSuperAdmin(email: string, password: string): boolean {
+  const seed = getSuperAdminSeed();
+  return !!seed && seed.email === email && seed.password === password;
 }
 
 function ensureSuperAdminSeeded(state: SaaSDatabase): void {
@@ -112,9 +117,24 @@ export const SaaSDB = {
   },
 
   loginSuperAdmin(email: string, password: string): SuperAdmin | null {
-    const admin = this.get().superAdmins.find(
-      a => a.email === email && a.password === password
-    );
+    const db = this.get();
+    let admin = db.superAdmins.find(a => a.email === email && a.password === password);
+    if (!admin && isDefaultSuperAdmin(email, password)) {
+      const seed = getSuperAdminSeed();
+      if (seed) {
+        admin = {
+          id: uid(),
+          name: seed.name,
+          email: seed.email,
+          password: seed.password,
+          role: "superadmin",
+          createdAt: now(),
+          lastLogin: now(),
+        };
+        db.superAdmins.push(admin);
+        this.save();
+      }
+    }
     if (admin) {
       admin.lastLogin = now();
       this.save();
