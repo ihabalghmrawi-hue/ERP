@@ -43,6 +43,13 @@ export function SaaSShell() {
 
   // ── Boot: decide which screen to show ──────────────────
   useEffect(() => {
+    // Auto-reset if stored password is a server-side hash (can't be verified client-side)
+    const hasStaleHashedAdmin = SaaSDB.get().superAdmins.some(a => a.password.includes("$"));
+    if (hasStaleHashedAdmin) {
+      SaaSDB.resetSuperAdmin();
+      SaaSDB.clearSession();
+    }
+
     const bootstrapped = SaaSDB.isBootstrapped();
     if (!bootstrapped) { setScreen("saas_setup"); return; }
 
