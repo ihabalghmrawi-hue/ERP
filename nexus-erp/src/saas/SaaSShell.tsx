@@ -155,7 +155,6 @@ export function SaaSShell() {
         <SuperAdminLogin
           onLogin={handleSuperLogin}
           onGoToCompanyLogin={() => setScreen("company_login")}
-          onReset={() => setScreen("saas_setup")}
         />
       )}
 
