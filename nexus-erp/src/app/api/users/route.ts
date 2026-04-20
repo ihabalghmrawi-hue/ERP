@@ -3,6 +3,7 @@ import { loadSaaSData, loadTenantData, saveTenantData } from "@/lib/server/stora
 import { requireAuth } from "@/lib/server/auth";
 import { uid } from "@/lib/server/uid";
 import { User } from "@/lib/db/database";
+import { getDefaultPermissions, UserRole } from "@/lib/engine/permissions";
 
 export async function POST(req: NextRequest) {
   const auth = requireAuth(req, ["superadmin", "admin"]);
