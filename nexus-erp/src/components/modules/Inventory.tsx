@@ -50,6 +50,7 @@ export function Inventory({ addToast }: Props) {
       category: prodForm.category, warehouseId: prodForm.warehouseId,
       unitCost: +prodForm.unitCost, sellPrice: +prodForm.sellPrice,
       taxRate: +(prodForm.taxRate || 0) / 100,
+      taxExempt: (prodForm as any).taxExempt || false,
       qty: +prodForm.qty, reorderPoint: +prodForm.reorderPoint,
       unit: prodForm.unit,
     };
