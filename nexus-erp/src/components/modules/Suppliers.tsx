@@ -36,6 +36,7 @@ export function Suppliers({ addToast }: Props) {
     db.suppliers.push(s);
     DB.save();
     setSuppliers([...db.suppliers]);
+    logActivity(user?.id || "", user?.name || "", "CREATE", "Suppliers", `أضاف المورد ${s.name}`);
     addToast(t("supplierCreated"), "success");
     setShowModal(false);
     setForm({ ...empty });
