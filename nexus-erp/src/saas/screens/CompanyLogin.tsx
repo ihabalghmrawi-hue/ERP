@@ -32,7 +32,7 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
       const data = await res.json();
       if (!res.ok) { setError(data.error || "البريد أو كلمة المرور غير صحيحة"); return; }
 
-      const { company, user, tenantData } = data;
+      const { company, user, tenantData, token } = data;
 
       // Sync to localStorage for current session
       const db = SaaSDB.get();
@@ -44,7 +44,7 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
       Object.assign(TenantDB.get(), tenantData);
       TenantDB.save();
 
-      onLogin(company, user);
+      onLogin(company, user, token);
     } catch {
       setError("حدث خطأ في الاتصال بالخادم");
     } finally {
