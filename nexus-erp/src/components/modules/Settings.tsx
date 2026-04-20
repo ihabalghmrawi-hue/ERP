@@ -5,6 +5,8 @@ import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { DB } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
+import { logActivity } from "@/lib/engine/helpers";
+import { useAuth } from "@/hooks/useAuth";
 
 const ARAB_COUNTRIES = [
   { code: "SA", name: "المملكة العربية السعودية", nameEn: "Saudi Arabia" },
