@@ -5,7 +5,7 @@ import { SuperAdmin } from "../types";
 import { C, S } from "@/lib/engine/design";
 
 interface Props {
-  onLogin: (admin: SuperAdmin) => void;
+  onLogin: (admin: SuperAdmin, token?: string) => void;
   onGoToCompanyLogin: () => void;
 }
 
