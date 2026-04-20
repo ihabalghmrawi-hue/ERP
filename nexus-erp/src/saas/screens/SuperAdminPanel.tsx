@@ -367,6 +367,7 @@ function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () 
         email: form.adminEmail,
         password: form.adminPassword,
         role: "admin",
+        permissions: [...ALL_PERMISSIONS],
         status: "active",
         companyId: company.id,
         lastLogin: new Date().toISOString(),
