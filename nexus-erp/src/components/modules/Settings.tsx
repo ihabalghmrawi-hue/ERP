@@ -205,6 +205,37 @@ export function Settings({ lang, setLang }: Props) {
           </label>
         </div>
 
+        {/* Inclusive / Exclusive default */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>نوع الأسعار الافتراضي</div>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${C.border}`, width: "fit-content" }}>
+              {[
+                { val: false, label: "غير شامل الضريبة (Exclusive)" },
+                { val: true,  label: "شامل الضريبة (Inclusive)" },
+              ].map((opt) => (
+                <button
+                  key={String(opt.val)}
+                  onClick={() => setForm({ ...form, vatInclusive: opt.val } as any)}
+                  style={{
+                    padding: "9px 18px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700,
+                    background: (form as any).vatInclusive === opt.val ? C.accent : C.surface,
+                    color: (form as any).vatInclusive === opt.val ? "#fff" : C.textMuted,
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>
+              {(form as any).vatInclusive
+                ? "💡 الضريبة مضمّنة في السعر — يتم استخراجها تلقائياً"
+                : "💡 الضريبة تُضاف فوق السعر عند إنشاء الفاتورة"}
+            </div>
+          </div>
+        </div>
+
         <div style={S.grid(3)}>
           <div style={S.formGroup}>
             <label style={S.label}>اسم الضريبة</label>
@@ -230,15 +261,31 @@ export function Settings({ lang, setLang }: Props) {
             />
           </div>
           <div style={S.formGroup}>
-            <label style={S.label}>معاينة</label>
+            <label style={S.label}>معاينة على فاتورة 1,000</label>
             <div style={{ padding: "10px 14px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13 }}>
-              <div style={{ color: C.textMuted, marginBottom: 4 }}>على فاتورة بـ 1,000</div>
-              <div style={{ fontWeight: 700, color: C.text }}>
-                الضريبة: {(1000 * ((form as any).vatRate || 0)).toFixed(2)}
-              </div>
-              <div style={{ fontWeight: 800, color: C.accent }}>
-                الإجمالي: {(1000 * (1 + ((form as any).vatRate || 0))).toFixed(2)}
-              </div>
+              {(form as any).vatInclusive ? (
+                <>
+                  <div style={{ color: C.textMuted, marginBottom: 4, fontSize: 11 }}>السعر شامل الضريبة</div>
+                  <div style={{ color: C.text }}>
+                    الوعاء: {(1000 / (1 + ((form as any).vatRate || 0))).toFixed(2)}
+                  </div>
+                  <div style={{ fontWeight: 700, color: C.warning }}>
+                    مستخرج: {(1000 - 1000 / (1 + ((form as any).vatRate || 0))).toFixed(2)}
+                  </div>
+                  <div style={{ fontWeight: 800, color: C.accent }}>الإجمالي: 1,000.00</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ color: C.textMuted, marginBottom: 4, fontSize: 11 }}>السعر غير شامل الضريبة</div>
+                  <div style={{ color: C.text }}>الوعاء: 1,000.00</div>
+                  <div style={{ fontWeight: 700, color: C.warning }}>
+                    مضاف: {(1000 * ((form as any).vatRate || 0)).toFixed(2)}
+                  </div>
+                  <div style={{ fontWeight: 800, color: C.accent }}>
+                    الإجمالي: {(1000 * (1 + ((form as any).vatRate || 0))).toFixed(2)}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
