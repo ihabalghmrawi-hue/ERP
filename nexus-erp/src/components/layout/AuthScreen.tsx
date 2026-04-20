@@ -5,6 +5,7 @@ import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { DB, User } from "@/lib/db/database";
 import { uid, today } from "@/lib/engine/helpers";
+import { ALL_PERMISSIONS } from "@/lib/engine/permissions";
 
 interface AuthScreenProps {
   onAuth: (user: User) => void;
