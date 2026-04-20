@@ -8,7 +8,7 @@ import { DB } from "@/lib/db/database";
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos";
+  | "pos" | "audit_log";
 
 interface SidebarProps {
   page: PageId;
