@@ -181,6 +181,7 @@ export interface AppSettings {
   companyName: string;
   taxNumber: string;
   address: string;
+  country: string;
   baseCurrency: string;
   fiscalYearStart: string;
   lang: "ar" | "en";
@@ -247,6 +248,7 @@ export function createInitialDatabaseState(): DatabaseState {
       companyName: "",
       taxNumber: "",
       address: "",
+      country: "SA",
       baseCurrency: "SAR",
       fiscalYearStart: "01-01",
       lang: "ar",

@@ -6,6 +6,56 @@ import { useLang } from "@/hooks/useLang";
 import { DB } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
 
+const ARAB_COUNTRIES = [
+  { code: "SA", name: "المملكة العربية السعودية", nameEn: "Saudi Arabia" },
+  { code: "AE", name: "الإمارات العربية المتحدة", nameEn: "UAE" },
+  { code: "KW", name: "الكويت", nameEn: "Kuwait" },
+  { code: "BH", name: "البحرين", nameEn: "Bahrain" },
+  { code: "OM", name: "عُمان", nameEn: "Oman" },
+  { code: "QA", name: "قطر", nameEn: "Qatar" },
+  { code: "JO", name: "الأردن", nameEn: "Jordan" },
+  { code: "EG", name: "مصر", nameEn: "Egypt" },
+  { code: "IQ", name: "العراق", nameEn: "Iraq" },
+  { code: "SY", name: "سوريا", nameEn: "Syria" },
+  { code: "LB", name: "لبنان", nameEn: "Lebanon" },
+  { code: "PS", name: "فلسطين", nameEn: "Palestine" },
+  { code: "LY", name: "ليبيا", nameEn: "Libya" },
+  { code: "TN", name: "تونس", nameEn: "Tunisia" },
+  { code: "DZ", name: "الجزائر", nameEn: "Algeria" },
+  { code: "MA", name: "المغرب", nameEn: "Morocco" },
+  { code: "MR", name: "موريتانيا", nameEn: "Mauritania" },
+  { code: "SD", name: "السودان", nameEn: "Sudan" },
+  { code: "SO", name: "الصومال", nameEn: "Somalia" },
+  { code: "DJ", name: "جيبوتي", nameEn: "Djibouti" },
+  { code: "KM", name: "جزر القمر", nameEn: "Comoros" },
+  { code: "YE", name: "اليمن", nameEn: "Yemen" },
+];
+
+const CURRENCIES = [
+  { code: "SAR", name: "ريال سعودي", nameEn: "Saudi Riyal" },
+  { code: "AED", name: "درهم إماراتي", nameEn: "UAE Dirham" },
+  { code: "KWD", name: "دينار كويتي", nameEn: "Kuwaiti Dinar" },
+  { code: "BHD", name: "دينار بحريني", nameEn: "Bahraini Dinar" },
+  { code: "OMR", name: "ريال عُماني", nameEn: "Omani Rial" },
+  { code: "QAR", name: "ريال قطري", nameEn: "Qatari Riyal" },
+  { code: "JOD", name: "دينار أردني", nameEn: "Jordanian Dinar" },
+  { code: "EGP", name: "جنيه مصري", nameEn: "Egyptian Pound" },
+  { code: "IQD", name: "دينار عراقي", nameEn: "Iraqi Dinar" },
+  { code: "SYP", name: "ليرة سورية", nameEn: "Syrian Pound" },
+  { code: "LBP", name: "ليرة لبنانية", nameEn: "Lebanese Pound" },
+  { code: "LYD", name: "دينار ليبي", nameEn: "Libyan Dinar" },
+  { code: "TND", name: "دينار تونسي", nameEn: "Tunisian Dinar" },
+  { code: "DZD", name: "دينار جزائري", nameEn: "Algerian Dinar" },
+  { code: "MAD", name: "درهم مغربي", nameEn: "Moroccan Dirham" },
+  { code: "MRU", name: "أوقية موريتانية", nameEn: "Mauritanian Ouguiya" },
+  { code: "SDG", name: "جنيه سوداني", nameEn: "Sudanese Pound" },
+  { code: "SOS", name: "شلن صومالي", nameEn: "Somali Shilling" },
+  { code: "DJF", name: "فرنك جيبوتي", nameEn: "Djiboutian Franc" },
+  { code: "KMF", name: "فرنك جزر القمر", nameEn: "Comorian Franc" },
+  { code: "YER", name: "ريال يمني", nameEn: "Yemeni Rial" },
+  { code: "USD", name: "دولار أمريكي", nameEn: "US Dollar" },
+];
+
 interface Props {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -74,24 +124,48 @@ export function Settings({ lang, setLang }: Props) {
             {t("companySettings")}
           </div>
 
-          {([
-            ["companyName",     t("companyName"),     "text"],
-            ["taxNumber",       t("taxNumber"),        "text"],
-            ["address",         t("address"),          "text"],
-            ["baseCurrency",    t("baseCurrency"),     "text"],
-            ["fiscalYearStart", t("fiscalYearStart"),  "text"],
-          ] as [string, string, string][]).map(([k, lbl, type]) => (
+          {(["companyName", "taxNumber", "address", "fiscalYearStart"] as const).map((k) => (
             <div key={k} style={S.formGroup}>
-              <label style={S.label}>{lbl}</label>
+              <label style={S.label}>{t(k as any)}</label>
               <input
                 style={S.input}
-                type={type}
+                type="text"
                 value={(form as any)[k] || ""}
                 onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-                placeholder={lbl}
+                placeholder={t(k as any)}
               />
             </div>
           ))}
+
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("country" as any)}</label>
+            <select
+              style={S.input}
+              value={form.country || "SA"}
+              onChange={(e) => setForm({ ...form, country: e.target.value })}
+            >
+              {ARAB_COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.nameEn})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("baseCurrency")}</label>
+            <select
+              style={S.input}
+              value={form.baseCurrency || "SAR"}
+              onChange={(e) => setForm({ ...form, baseCurrency: e.target.value })}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name} ({c.nameEn})
+                </option>
+              ))}
+            </select>
+          </div>
 
           <button
             style={{ ...S.btn("primary"), padding: "10px 28px", border: "none", marginTop: 4 }}
