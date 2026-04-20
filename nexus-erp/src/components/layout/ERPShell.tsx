@@ -85,7 +85,7 @@ export function ERPShell() {
           <AuthScreen onAuth={handleLogin} />
         ) : (
           <div style={{ ...S.app, direction: dir }}>
-            <Sidebar page={page} onNavigate={setPage} />
+            <Sidebar page={page} onNavigate={handleNavigate} />
             <div style={S.main}>
               <Topbar pageLabel={NAV_LABELS[page]} />
               <div style={S.content}>
