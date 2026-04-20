@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData } from "@/lib/server/storage";
+import { signToken } from "@/lib/server/jwt";
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json();
