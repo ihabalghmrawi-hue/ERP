@@ -19,26 +19,38 @@ export function Purchases({ addToast }: Props) {
   const { t } = useLang();
   const { user } = useAuth();
   const db = DB.get();
+  const settings = db.settings;
   const [pos, setPOs] = useState<PurchaseOrder[]>([...db.purchaseOrders]);
   const [showModal, setShowModal] = useState(false);
+  const [vatEnabled, setVatEnabled] = useState(settings.vatEnabled || false);
   const [form, setForm] = useState({ supplierId: "", lines: [{ productId: "", qty: 1, unitCost: 0 }] as LineForm[] });
 
-  const formTotal = form.lines.reduce((s, l) => s + (l.qty || 0) * (l.unitCost || 0), 0);
+  const activeVatRate  = vatEnabled ? (settings.vatRate || 0) : 0;
+  const formSubtotal   = form.lines.reduce((s, l) => s + (l.qty || 0) * (l.unitCost || 0), 0);
+  const formTax        = formSubtotal * activeVatRate;
+  const formTotal      = formSubtotal + formTax;
 
   const handleCreate = () => {
     const supp = db.suppliers.find((s) => s.id === form.supplierId);
     if (!supp || form.lines.some((l) => !l.productId)) { addToast(t("fillRequired"), "error"); return; }
 
     const id = `PO-${String(DB.nextId("po")).padStart(4, "0")}`;
-    const poLines: POLine[] = form.lines.map((l) => ({
-      productId: l.productId,
-      productName: db.products.find((p) => p.id === l.productId)?.name || "",
-      qty: l.qty, unitCost: l.unitCost, total: l.qty * l.unitCost,
-    }));
+    const poLines: POLine[] = form.lines.map((l) => {
+      const lineSubtotal = (l.qty || 0) * (l.unitCost || 0);
+      const lineTax      = lineSubtotal * activeVatRate;
+      return {
+        productId: l.productId,
+        productName: db.products.find((p) => p.id === l.productId)?.name || "",
+        qty: l.qty, unitCost: l.unitCost,
+        subtotal: lineSubtotal, taxRate: activeVatRate, tax: lineTax,
+        total: lineSubtotal + lineTax,
+      };
+    });
     const po: PurchaseOrder = {
       id, date: today(), supplierId: supp.id, supplierName: supp.name,
       status: "received", currency: "SAR", lines: poLines,
-      subtotal: formTotal, taxAmount: 0, total: formTotal,
+      subtotal: formSubtotal, taxAmount: formTax, total: formTotal,
+      vatEnabled,
       amountPaid: 0, amountDue: formTotal,
     };
     try {
@@ -134,7 +146,43 @@ export function Purchases({ addToast }: Props) {
           ))}
 
           <div style={S.divider} />
-          <div style={{ textAlign: "left", fontSize: 18, fontWeight: 800, marginBottom: 16 }}>{t("total")}: {fmt(formTotal)}</div>
+
+          {/* VAT Toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, padding: "10px 14px", background: vatEnabled ? C.successLight : C.surfaceAlt, borderRadius: 8, border: `1px solid ${vatEnabled ? C.success : C.border}` }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={vatEnabled}
+                onChange={(e) => setVatEnabled(e.target.checked)}
+                style={{ width: 16, height: 16, cursor: "pointer" }}
+              />
+              <span style={{ fontWeight: 700, fontSize: 13, color: vatEnabled ? C.success : C.textMuted }}>
+                {settings.vatName || "ضريبة القيمة المضافة"} ({((settings.vatRate || 0) * 100).toFixed(0)}%)
+              </span>
+            </label>
+            {vatEnabled && (
+              <span style={{ ...S.badge("success"), marginRight: "auto" }}>مفعّلة</span>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 16px", marginBottom: 16, border: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textSec, marginBottom: 6 }}>
+              <span>{t("subtotal")}</span>
+              <span style={{ fontWeight: 600 }}>{fmt(formSubtotal)}</span>
+            </div>
+            {vatEnabled && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.warning, marginBottom: 6 }}>
+                <span>{settings.vatName || "الضريبة"} ({((settings.vatRate || 0) * 100).toFixed(0)}%)</span>
+                <span style={{ fontWeight: 600 }}>{fmt(formTax)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 17, fontWeight: 800, color: C.text, borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 4 }}>
+              <span>{t("total")}</span>
+              <span>{fmt(formTotal)}</span>
+            </div>
+          </div>
+
           <div style={{ background: C.warningLight, borderRadius: 7, padding: 10, marginBottom: 16, fontSize: 12, color: C.warning }}>{t("autoPONote")}</div>
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>

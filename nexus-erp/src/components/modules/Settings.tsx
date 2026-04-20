@@ -176,6 +176,94 @@ export function Settings({ lang, setLang }: Props) {
         </div>
       </div>
 
+      {/* VAT Settings */}
+      <div style={S.card}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+          ⚖️ إعدادات ضريبة القيمة المضافة (VAT)
+        </div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>
+          تُطبَّق هذه الإعدادات على جميع الفواتير الجديدة — يمكن التحكم بها لكل فاتورة على حدة
+        </div>
+
+        {/* Enable / Disable toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, padding: "14px 16px", background: (form as any).vatEnabled ? C.successLight : C.surfaceAlt, borderRadius: 10, border: `1.5px solid ${(form as any).vatEnabled ? C.success : C.border}` }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", flex: 1 }}>
+            <input
+              type="checkbox"
+              checked={(form as any).vatEnabled || false}
+              onChange={(e) => setForm({ ...form, vatEnabled: e.target.checked } as any)}
+              style={{ width: 18, height: 18, cursor: "pointer" }}
+            />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: (form as any).vatEnabled ? C.success : C.text }}>
+                {(form as any).vatEnabled ? "✅ ضريبة القيمة المضافة مفعّلة" : "ضريبة القيمة المضافة معطّلة"}
+              </div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                عند التفعيل، تُحسب الضريبة تلقائياً وتُرحَّل إلى حسابات الضريبة في دفتر الأستاذ
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div style={S.grid(3)}>
+          <div style={S.formGroup}>
+            <label style={S.label}>اسم الضريبة</label>
+            <input
+              style={S.input}
+              type="text"
+              value={(form as any).vatName || ""}
+              onChange={(e) => setForm({ ...form, vatName: e.target.value } as any)}
+              placeholder="مثال: ضريبة القيمة المضافة"
+            />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>نسبة الضريبة (%)</label>
+            <input
+              style={S.input}
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={Math.round(((form as any).vatRate || 0) * 100)}
+              onChange={(e) => setForm({ ...form, vatRate: +e.target.value / 100 } as any)}
+              placeholder="مثال: 15"
+            />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>معاينة</label>
+            <div style={{ padding: "10px 14px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13 }}>
+              <div style={{ color: C.textMuted, marginBottom: 4 }}>على فاتورة بـ 1,000</div>
+              <div style={{ fontWeight: 700, color: C.text }}>
+                الضريبة: {(1000 * ((form as any).vatRate || 0)).toFixed(2)}
+              </div>
+              <div style={{ fontWeight: 800, color: C.accent }}>
+                الإجمالي: {(1000 * (1 + ((form as any).vatRate || 0))).toFixed(2)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* VAT Accounts info */}
+        <div style={{ background: C.accentLight, borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, color: C.accent, marginBottom: 8 }}>📊 الحسابات المحاسبية المرتبطة تلقائياً</div>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+            <div style={{ color: C.textSec }}>
+              <span style={{ color: C.success, fontWeight: 700 }}>2100</span> — ضريبة المدخلات (VAT مستردة) · تُستخدم في فواتير الشراء كمدين
+            </div>
+            <div style={{ color: C.textSec }}>
+              <span style={{ color: C.danger, fontWeight: 700 }}>2200</span> — ضريبة المخرجات (VAT مستحقة) · تُستخدم في فواتير البيع كدائن
+            </div>
+          </div>
+        </div>
+
+        <button
+          style={{ ...S.btn("primary"), padding: "10px 28px", border: "none" }}
+          onClick={handleSave}
+        >
+          {saved ? "تم الحفظ ✓" : "حفظ إعدادات الضريبة"}
+        </button>
+      </div>
+
       {/* System info card */}
       <div style={S.card}>
         <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginBottom: 16 }}>

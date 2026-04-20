@@ -29,7 +29,7 @@ export function Reports() {
   const bs  = AccountingEngine.getBalanceSheet(asOfDate);
   const tb  = AccountingEngine.getTrialBalance(asOfDate);
   const inv = AccountingEngine.getInventoryValuation();
-  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "trial" | "ar" | "ap">("sales");
+  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "trial" | "ar" | "ap" | "vat">("sales");
   const [searchQuery, setSearchQuery] = useState("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "paid" | "outstanding" | "overdue">("all");
   const [accountTypeFilter, setAccountTypeFilter] = useState<"all" | "asset" | "liability" | "equity" | "revenue" | "expense" | "cogs">("all");
@@ -113,6 +113,8 @@ export function Reports() {
     }));
   }, [startDate, endDate, asOfDate, activeReport, searchQuery, invoiceStatusFilter, accountTypeFilter, inventoryWarehouseFilter, inventoryCategoryFilter, arStatusFilter, apStatusFilter]);
 
+  const vatReport = AccountingEngine.getVATReport(startDate, endDate);
+
   const REPORT_TABS = [
     { id: "sales"     as const, label: t("salesPerformance") },
     { id: "inventory" as const, label: t("inventoryValuation") },
@@ -120,6 +122,7 @@ export function Reports() {
     { id: "trial"     as const, label: "ميزان المراجعة" },
     { id: "ar"        as const, label: t("accountsReceivable") },
     { id: "ap"        as const, label: t("accountsPayable") },
+    { id: "vat"       as const, label: "⚖️ تقرير الضريبة (VAT)" },
   ];
 
   return (
@@ -491,6 +494,115 @@ export function Reports() {
                 <span key="name" style={{ fontWeight: 700 }}>{s.name}</span>,
               ])}
             />
+          )}
+        </div>
+      )}
+
+      {/* ── VAT Report ── */}
+      {activeReport === "vat" && (
+        <div>
+          {/* KPI cards */}
+          <div style={S.grid(3)}>
+            <div style={{ ...S.kpiCard(C.danger), padding: 20 }}>
+              <div style={S.kpiLabel}>ضريبة المخرجات (على المبيعات)</div>
+              <div style={{ ...S.kpiValue, color: C.danger }}>{fmt(vatReport.outputVAT)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                وعاء ضريبي: {fmt(vatReport.totalSalesSubtotal)} · {vatReport.taxableInvoices.length} فاتورة
+              </div>
+            </div>
+            <div style={{ ...S.kpiCard(C.success), padding: 20 }}>
+              <div style={S.kpiLabel}>ضريبة المدخلات (على المشتريات)</div>
+              <div style={{ ...S.kpiValue, color: C.success }}>{fmt(vatReport.inputVAT)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                وعاء ضريبي: {fmt(vatReport.totalPurchSubtotal)} · {vatReport.taxablePOs.length} أمر شراء
+              </div>
+            </div>
+            <div style={{ ...S.kpiCard(vatReport.netVAT >= 0 ? C.warning : C.accentMid), padding: 20 }}>
+              <div style={S.kpiLabel}>صافي الضريبة المستحقة</div>
+              <div style={{ ...S.kpiValue, color: vatReport.netVAT >= 0 ? C.warning : C.accentMid }}>{fmt(vatReport.netVAT)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                {vatReport.netVAT >= 0 ? "مستحق الدفع للجهات الضريبية" : "رصيد مستحق الاسترداد"}
+              </div>
+            </div>
+          </div>
+
+          {/* Summary box */}
+          <div style={{ ...S.card, background: vatReport.netVAT >= 0 ? "#FEF9E7" : "#EBF5FB", border: `1px solid ${vatReport.netVAT >= 0 ? C.warning : C.accent}30`, marginTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginBottom: 16 }}>
+              📋 ملخص الضريبة
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+              {[
+                ["ضريبة المخرجات (مبيعات)", fmt(vatReport.outputVAT), C.danger],
+                ["ضريبة المدخلات (مشتريات)", fmt(vatReport.inputVAT), C.success],
+                ["صافي الضريبة المستحقة", fmt(vatReport.netVAT), vatReport.netVAT >= 0 ? C.warning : C.accentMid],
+              ].map(([label, val, color]) => (
+                <div key={label as string} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ color: C.textSec, fontSize: 13 }}>{label as string}</span>
+                  <span style={{ fontWeight: 800, color: color as string, fontSize: 14 }}>{val as string}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Taxable Sales */}
+          {vatReport.taxableInvoices.length > 0 && (
+            <div style={{ ...S.card, marginTop: 4 }}>
+              <div style={S.sectionHeader}>
+                <span style={{ fontSize: 12, color: C.danger, fontWeight: 700 }}>
+                  إجمالي الضريبة: {fmt(vatReport.outputVAT)}
+                </span>
+                <div style={S.sectionTitle}>فواتير البيع الخاضعة للضريبة ({vatReport.taxableInvoices.length})</div>
+              </div>
+              <DataTable
+                headers={[
+                  { label: "ضريبة" }, { label: "الإجمالي" }, { label: "الوعاء الضريبي" },
+                  { label: "العميل" }, { label: "التاريخ" }, { label: "رقم الفاتورة" },
+                ]}
+                rows={vatReport.taxableInvoices.map((inv) => [
+                  <span key="tax" style={{ fontWeight: 700, color: C.danger }}>{fmt(inv.taxAmount)}</span>,
+                  <span key="tot" style={{ fontWeight: 700 }}>{fmt(inv.total)}</span>,
+                  fmt(inv.subtotal),
+                  inv.customerName,
+                  fmtDate(inv.date),
+                  <span key="id" style={{ color: C.accent, fontWeight: 700 }}>{inv.id}</span>,
+                ])}
+              />
+            </div>
+          )}
+
+          {/* Taxable Purchases */}
+          {vatReport.taxablePOs.length > 0 && (
+            <div style={{ ...S.card, marginTop: 4 }}>
+              <div style={S.sectionHeader}>
+                <span style={{ fontSize: 12, color: C.success, fontWeight: 700 }}>
+                  إجمالي الضريبة: {fmt(vatReport.inputVAT)}
+                </span>
+                <div style={S.sectionTitle}>فواتير الشراء الخاضعة للضريبة ({vatReport.taxablePOs.length})</div>
+              </div>
+              <DataTable
+                headers={[
+                  { label: "ضريبة مدخلات" }, { label: "الإجمالي" }, { label: "الوعاء الضريبي" },
+                  { label: "المورد" }, { label: "التاريخ" }, { label: "رقم الأمر" },
+                ]}
+                rows={vatReport.taxablePOs.map((po) => [
+                  <span key="tax" style={{ fontWeight: 700, color: C.success }}>{fmt(po.taxAmount)}</span>,
+                  <span key="tot" style={{ fontWeight: 700 }}>{fmt(po.total)}</span>,
+                  fmt(po.subtotal),
+                  po.supplierName,
+                  fmtDate(po.date),
+                  <span key="id" style={{ color: C.accent, fontWeight: 700 }}>{po.id}</span>,
+                ])}
+              />
+            </div>
+          )}
+
+          {vatReport.taxableInvoices.length === 0 && vatReport.taxablePOs.length === 0 && (
+            <div style={{ ...S.card, textAlign: "center", color: C.textMuted, padding: 40 }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+              <div style={{ fontWeight: 700 }}>لا توجد معاملات خاضعة للضريبة في هذه الفترة</div>
+              <div style={{ fontSize: 12, marginTop: 8 }}>فعّل ضريبة القيمة المضافة من الإعدادات ثم أنشئ فواتير جديدة</div>
+            </div>
           )}
         </div>
       )}

@@ -93,6 +93,7 @@ export interface Invoice {
   subtotal: number;
   taxAmount: number;
   total: number;
+  vatEnabled?: boolean;
   notes?: string;
   journalEntryId?: string;
 }
@@ -102,6 +103,9 @@ export interface POLine {
   productName: string;
   qty: number;
   unitCost: number;
+  subtotal: number;
+  taxRate: number;
+  tax: number;
   total: number;
 }
 
@@ -116,6 +120,7 @@ export interface PurchaseOrder {
   subtotal: number;
   taxAmount: number;
   total: number;
+  vatEnabled?: boolean;
   amountPaid: number;
   amountDue: number;
   journalEntryId?: string;
@@ -185,6 +190,9 @@ export interface AppSettings {
   baseCurrency: string;
   fiscalYearStart: string;
   lang: "ar" | "en";
+  vatEnabled: boolean;
+  vatRate: number;
+  vatName: string;
 }
 
 export interface DatabaseState {
@@ -215,7 +223,8 @@ export function createDefaultAccounts(): Account[] {
 
     { id: "acc_2000", code: "2000", name: "الخصوم", type: "liability", category: "liability_group", balance: 0 },
     { id: "acc_2010", code: "2010", name: "الذمم الدائنة", type: "liability", category: "current_liability", parentId: "acc_2000", balance: 0 },
-    { id: "acc_2200", code: "2200", name: "ضريبة المبيعات", type: "liability", category: "current_liability", parentId: "acc_2000", balance: 0 },
+    { id: "acc_2100", code: "2100", name: "ضريبة المدخلات (VAT مستردة)", type: "asset", category: "current_asset", parentId: "acc_1000", balance: 0 },
+    { id: "acc_2200", code: "2200", name: "ضريبة المخرجات (VAT مستحقة)", type: "liability", category: "current_liability", parentId: "acc_2000", balance: 0 },
 
     { id: "acc_3000", code: "3000", name: "حقوق الملكية", type: "equity", category: "equity", balance: 0 },
 
@@ -252,6 +261,9 @@ export function createInitialDatabaseState(): DatabaseState {
       baseCurrency: "SAR",
       fiscalYearStart: "01-01",
       lang: "ar",
+      vatEnabled: false,
+      vatRate: 0.15,
+      vatName: "ضريبة القيمة المضافة",
     },
     counters: { je: 1, inv: 1, po: 1, tx: 1 },
   };

@@ -208,20 +208,19 @@ export const AccountingEngine = {
   postPurchaseInvoice(po: PurchaseOrder) {
     const db = DB.get();
 
-    const invAcc = this.getAccountByCode("1200"); // المخزون
-    const apAcc = this.getAccountByCode("2010"); // ذمم دائنة
+    const invAcc    = this.getAccountByCode("1200"); // المخزون
+    const apAcc     = this.getAccountByCode("2010"); // ذمم دائنة
+    const vatRecAcc = this.getAccountByCode("2100"); // ضريبة المدخلات
 
     if (!invAcc || !apAcc) {
       throw new Error("يرجى إنشاء الحسابات المحاسبية الأساسية:\n• 1200 - المخزون\n• 2010 - الذمم الدائنة");
     }
 
-    // إضافة المخزون وتسجيل حركات
+    // إضافة المخزون وتسجيل حركات (بتكلفة بدون ضريبة)
     po.lines.forEach((line) => {
       const p = db.products.find((x) => x.id === line.productId);
       if (p) {
         p.qty = (p.qty || 0) + line.qty;
-        
-        // تسجيل حركة المخزون (إدخال)
         try {
           InventoryManager.recordMovement("in", line.productId, line.qty, po.id, {
             notes: `شراء - أمر الشراء #${po.id}`,
@@ -233,16 +232,23 @@ export const AccountingEngine = {
       }
     });
 
-    // تحديث رصيد المورد
+    // تحديث رصيد المورد بالإجمالي (شامل الضريبة)
     const supp = db.suppliers.find((s) => s.id === po.supplierId);
     if (supp) {
       supp.balance = (supp.balance || 0) + po.total;
     }
 
-    return this.postJE(`فاتورة شراء - ${po.supplierName}`, po.id, [
-      { accountId: invAcc.id, accountName: invAcc.name, debit: po.total, credit: 0 },
-      { accountId: apAcc.id, accountName: apAcc.name, debit: 0, credit: po.total },
-    ]);
+    const jeLines: import("../db/database").JournalLine[] = [
+      { accountId: invAcc.id, accountName: invAcc.name, debit: po.subtotal, credit: 0 },
+    ];
+
+    if (vatRecAcc && po.taxAmount > 0) {
+      jeLines.push({ accountId: vatRecAcc.id, accountName: vatRecAcc.name, debit: po.taxAmount, credit: 0 });
+    }
+
+    jeLines.push({ accountId: apAcc.id, accountName: apAcc.name, debit: 0, credit: po.total });
+
+    return this.postJE(`فاتورة شراء - ${po.supplierName}`, po.id, jeLines);
   },
 
   postPurchaseReturn(po: PurchaseOrder) {
@@ -536,5 +542,46 @@ export const AccountingEngine = {
         balance: s.balance || 0,
       }))
       .sort((a, b) => (b.balance || 0) - (a.balance || 0));
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // تقرير ضريبة القيمة المضافة (VAT Report)
+  // ─────────────────────────────────────────────────────────────────
+
+  getVATReport(startDate?: string, endDate?: string) {
+    const db = DB.get();
+
+    const filteredInvoices = db.invoices.filter((inv) => {
+      if (startDate && inv.date < startDate) return false;
+      if (endDate   && inv.date > endDate)   return false;
+      return true;
+    });
+
+    const filteredPOs = db.purchaseOrders.filter((po) => {
+      if (startDate && po.date < startDate) return false;
+      if (endDate   && po.date > endDate)   return false;
+      return true;
+    });
+
+    const outputVAT = filteredInvoices.reduce((s, i) => s + (i.taxAmount || 0), 0);
+    const inputVAT  = filteredPOs.reduce((s, p) => s + (p.taxAmount || 0), 0);
+    const netVAT    = outputVAT - inputVAT;
+
+    const taxableInvoices = filteredInvoices.filter((i) => (i.taxAmount || 0) > 0);
+    const taxablePOs      = filteredPOs.filter((p) => (p.taxAmount || 0) > 0);
+
+    const totalSalesSubtotal  = taxableInvoices.reduce((s, i) => s + i.subtotal, 0);
+    const totalPurchSubtotal  = taxablePOs.reduce((s, p) => s + p.subtotal, 0);
+
+    return {
+      outputVAT,
+      inputVAT,
+      netVAT,
+      totalSalesSubtotal,
+      totalPurchSubtotal,
+      taxableInvoices,
+      taxablePOs,
+      period: { startDate, endDate },
+    };
   },
 };
