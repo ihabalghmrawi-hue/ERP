@@ -138,7 +138,7 @@ export function SaaSShell() {
     const tenantState = TenantDB.get();
     (DB as any)._syncFromTenant(tenantState, co.id);
     setLang((tenantState.settings.lang as Lang) || "ar");
-    SaaSDB.setSession({ type: "company", id: co.id, name: co.name, email: co.email, userId: user.id });
+    SaaSDB.setSession({ type: "company", id: co.id, name: co.name, email: co.email, userId: user.id, token });
     SaaSDB.updateUsageStats(co.id, {
       totalUsers: tenantState.users.length,
       totalProducts: tenantState.products.length,
