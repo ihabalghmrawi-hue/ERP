@@ -28,6 +28,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       email: form.email,
       password: form.password,
       role: "admin",
+      permissions: [...(await import("@/lib/engine/permissions")).ALL_PERMISSIONS],
       status: "active",
       lastLogin: new Date().toISOString(),
       createdAt: today(),
