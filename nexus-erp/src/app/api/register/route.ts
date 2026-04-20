@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, saveSaaSData, saveTenantData, loadTenantData } from "@/lib/server/storage";
 import { createInitialDatabaseState } from "@/lib/db/database";
 import { PlanId, Subscription, SubscriptionStatus } from "@/saas/types";
+import { ALL_PERMISSIONS } from "@/lib/engine/permissions";
 
 function uid() { return Math.random().toString(36).slice(2, 12); }
 function today() { return new Date().toISOString().slice(0, 10); }
