@@ -25,7 +25,8 @@ export function SuperAdminLogin({ onLogin, onGoToCompanyLogin }: Props) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "بيانات الدخول غير صحيحة"); return; }
-      onLogin(data);
+      const { token, ...admin } = data;
+      onLogin(admin, token);
     } catch {
       setError("حدث خطأ، حاول مجدداً");
     } finally {
