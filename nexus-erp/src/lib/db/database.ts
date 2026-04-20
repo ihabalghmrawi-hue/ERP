@@ -274,6 +274,7 @@ export function createInitialDatabaseState(): DatabaseState {
       vatEnabled: false,
       vatRate: 0.15,
       vatName: "ضريبة القيمة المضافة",
+      vatInclusive: false,
     },
     counters: { je: 1, inv: 1, po: 1, tx: 1 },
   };
