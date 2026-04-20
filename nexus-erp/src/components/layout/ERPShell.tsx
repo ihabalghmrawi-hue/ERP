@@ -28,7 +28,7 @@ import { Settings }   from "@/components/modules/Settings";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
-  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings";
+  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos";
 
 export function ERPShell() {
   const [lang, setLang]       = useState<Lang>(() => (DB.get().settings.lang as Lang) || "ar");
