@@ -202,6 +202,7 @@ export interface AppSettings {
   vatEnabled: boolean;
   vatRate: number;
   vatName: string;
+  vatInclusive: boolean;
 }
 
 export interface DatabaseState {
