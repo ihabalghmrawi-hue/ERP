@@ -6,7 +6,7 @@ import { User } from "@/lib/db/database";
 import { getDefaultPermissions, UserRole } from "@/lib/engine/permissions";
 
 export async function POST(req: NextRequest) {
-  const auth = requireAuth(req, ["superadmin", "admin"]);
+  const auth = requirePermission(req, "manage_users");
   if (auth.error) return auth.error;
 
   const payload = auth.payload;
