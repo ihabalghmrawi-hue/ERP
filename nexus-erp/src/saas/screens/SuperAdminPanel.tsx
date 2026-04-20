@@ -374,7 +374,7 @@ function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () 
         createdAt: today(),
       };
       db.users.push(user);
-      db.activityLog.unshift({ id: uid(), timestamp: new Date().toLocaleString("ar-SA"), userId: user.id, user: user.name, action: "CREATE", module: "Auth", description: "Created initial tenant admin" });
+      db.activityLog.unshift({ id: uid(), timestamp: new Date().toLocaleString("ar-SA"), userId: user.id, user: user.name, action: "CREATE", module: "Auth", description: "Created initial tenant admin", readonly: true });
       TenantDB.save();
       addToast(`تم إنشاء شركة "${form.name}" والمشرف الأول بنجاح ✅`, "success");
       onCreated();

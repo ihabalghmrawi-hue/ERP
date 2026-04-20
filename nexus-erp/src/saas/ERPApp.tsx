@@ -25,7 +25,7 @@ import { Reports }    from "@/components/modules/Reports";
 import { Users }      from "@/components/modules/Users";
 import { Settings }   from "@/components/modules/Settings";
 import { POS }        from "@/components/modules/POS";
-import { AuditLog }  from "@/components/modules/AuditLog";
+import AuditLog from "@/components/modules/AuditLog";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"

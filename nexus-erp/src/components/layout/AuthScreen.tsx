@@ -43,6 +43,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       action: "CREATE",
       module: "Auth",
       description: "تم إنشاء حساب المدير",
+      readonly: true,
     });
     DB.save();
     onAuth(user);
@@ -65,6 +66,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       action: "LOGIN",
       module: "Auth",
       description: "تسجيل دخول",
+      readonly: true,
     });
     DB.save();
     onAuth(user);

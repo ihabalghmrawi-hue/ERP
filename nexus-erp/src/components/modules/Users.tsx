@@ -6,7 +6,7 @@ import { useLang } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
 import { DB, User } from "@/lib/db/database";
 import { TenantDB } from "@/saas/tenantDB";
-import { uid, today } from "@/lib/engine/helpers";
+import { uid, today, logActivity } from "@/lib/engine/helpers";
 import {
   PERMISSION_GROUPS, getDefaultPermissions,
   UserRole, Permission,
@@ -100,12 +100,7 @@ export function Users({ addToast }: Props) {
       createdAt: today(),
     };
     db.users.push(u);
-    db.activityLog.unshift({
-      id: uid(), timestamp: new Date().toLocaleString("ar-SA"),
-      userId: currentUser?.id || "", user: currentUser?.name || "",
-      action: "CREATE", module: "Users",
-      description: `أضاف المستخدم ${u.name} (${ROLE_LABEL[u.role]})`,
-    });
+    logActivity(currentUser?.id || "", currentUser?.name || "", "CREATE", "Users", `أضاف المستخدم ${u.name} (${ROLE_LABEL[u.role]})`, undefined, undefined, undefined, navigator.userAgent);
     DB.save();
     setUsers([...db.users]);
     addToast(t("userCreated"), "success");

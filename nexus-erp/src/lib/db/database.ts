@@ -176,6 +176,12 @@ export interface ActivityLog {
   action: string;
   module: string;
   description: string;
+  oldValues?: Record<string, any>; // حفظ القيم القديمة
+  newValues?: Record<string, any>; // حفظ القيم الجديدة
+  ipAddress?: string; // عنوان IP
+  userAgent?: string; // معلومات المتصفح/الجهاز
+  error?: string; // تسجيل الأخطاء إذا حدثت
+  readonly: true; // علامة للحماية من التعديل
 }
 
 export interface InventoryMovement {

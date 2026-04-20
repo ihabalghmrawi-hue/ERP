@@ -57,7 +57,11 @@ export function logActivity(
   userName: string,
   action: string,
   module: string,
-  description: string
+  description: string,
+  oldValues?: Record<string, any>,
+  newValues?: Record<string, any>,
+  ipAddress?: string,
+  userAgent?: string
 ): void {
   import("../db/database").then(({ DB }) => {
     DB.get().activityLog.unshift({
@@ -68,7 +72,64 @@ export function logActivity(
       action,
       module,
       description,
+      oldValues,
+      newValues,
+      ipAddress,
+      userAgent,
+      readonly: true,
     });
     DB.save();
   });
+  // Send asynchronously to server-side Audit API (non-blocking)
+  try {
+    if (typeof window !== "undefined") {
+      const payload = {
+        userId,
+        userName,
+        action,
+        module,
+        description,
+        oldValues,
+        newValues,
+        ipAddress,
+        userAgent: userAgent || (typeof navigator !== "undefined" ? navigator.userAgent : ""),
+      };
+      void fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+export function logError(
+  userId: string,
+  userName: string,
+  module: string,
+  error: string,
+  ipAddress?: string,
+  userAgent?: string
+): void {
+  import("../db/database").then(({ DB }) => {
+    DB.get().activityLog.unshift({
+      id: uid(),
+      timestamp: new Date().toLocaleString("ar-SA"),
+      userId,
+      user: userName,
+      action: "ERROR",
+      module,
+      description: `خطأ: ${error}`,
+      ipAddress,
+      userAgent,
+      readonly: true,
+    });
+    DB.save();
+  });
+  try {
+    if (typeof window !== "undefined") {
+      const payload = { userId, userName, module, error, ipAddress, userAgent: userAgent || (typeof navigator !== "undefined" ? navigator.userAgent : "") };
+      void fetch("/api/audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+    }
+  } catch {}
 }

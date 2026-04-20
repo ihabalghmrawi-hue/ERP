@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { DB, Invoice, InvoiceLine } from "@/lib/db/database";
 import { AccountingEngine } from "@/lib/engine/accounting";
 import { TaxService, VatMode } from "@/lib/engine/tax";
-import { fmt, fmtDate, uid, today, logActivity } from "@/lib/engine/helpers";
+import { fmt, fmtDate, uid, today, logActivity, logError } from "@/lib/engine/helpers";
 import { KPI }         from "@/components/ui/KPI";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
@@ -102,7 +102,10 @@ export function Sales({ addToast }: Props) {
       addToast(t("invoiceCreated"), "success");
       setShowModal(false);
       setForm({ customerId: "", paymentType: "credit", lines: [{ productId: "", qty: 1, discount: 0 }], notes: "" });
-    } catch (e: any) { addToast(e.message, "error"); }
+    } catch (e: any) { 
+      addToast(e.message, "error"); 
+      logError(user?.id || "", user?.name || "", "Sales", e.message);
+    }
   };
 
   const filtered = invoices.filter((inv) => inv.id.includes(search) || inv.customerName?.includes(search));
