@@ -36,6 +36,7 @@ export function Customers({ addToast }: Props) {
     db.customers.push(c);
     DB.save();
     setCustomers([...db.customers]);
+    logActivity(user?.id || "", user?.name || "", "CREATE", "Customers", `أضاف العميل ${c.name}`);
     addToast(t("customerCreated"), "success");
     setShowModal(false);
     setForm({ ...empty });
