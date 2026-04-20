@@ -106,6 +106,7 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
       case "users":      return <Users      addToast={addToast} />;
       case "settings":   return <Settings   lang={lang} setLang={setLang} />;
       case "pos":        return <POS        addToast={addToast} />;
+      case "audit_log":  return <AuditLog />;
     }
   };
 
