@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     type: "company",
     role: user.role,
     companyId,
+    permissions: user.permissions,
   });
 
   return NextResponse.json({ token, role: user.role, companyId, companyName: company.name });
