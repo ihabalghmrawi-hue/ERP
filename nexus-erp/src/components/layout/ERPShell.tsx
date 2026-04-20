@@ -72,6 +72,7 @@ export function ERPShell() {
     reports:    <Reports />,
     users:      <Users      addToast={addToast} />,
     settings:   <Settings   lang={lang} setLang={handleSetLang} />,
+    pos:        <POS        addToast={addToast} />,
   };
 
   return (
