@@ -81,6 +81,7 @@ export interface InvoiceLine {
   subtotal: number;
   tax: number;
   total: number;
+  taxExempt?: boolean;
 }
 
 export interface Invoice {
@@ -97,6 +98,9 @@ export interface Invoice {
   taxAmount: number;
   total: number;
   vatEnabled?: boolean;
+  vatInclusive?: boolean;
+  amountPaid?: number;
+  amountDue?: number;
   notes?: string;
   journalEntryId?: string;
 }
@@ -110,6 +114,7 @@ export interface POLine {
   taxRate: number;
   tax: number;
   total: number;
+  taxExempt?: boolean;
 }
 
 export interface PurchaseOrder {
@@ -124,6 +129,7 @@ export interface PurchaseOrder {
   taxAmount: number;
   total: number;
   vatEnabled?: boolean;
+  vatInclusive?: boolean;
   amountPaid: number;
   amountDue: number;
   journalEntryId?: string;
