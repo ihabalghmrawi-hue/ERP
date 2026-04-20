@@ -62,8 +62,9 @@ export function Sidebar({ page, onNavigate }: SidebarProps) {
     {
       section: t("system"),
       items: [
-        { id: "users"    as PageId, label: t("users"),    icon: "👤", perm: "manage_users"    },
-        { id: "settings" as PageId, label: t("settings"), icon: "⚙️", perm: "manage_settings" },
+        { id: "users"     as PageId, label: t("users"),       icon: "👤", perm: "manage_users"    },
+        { id: "audit_log" as PageId, label: "سجل التدقيق",  icon: "📋", perm: "manage_users"    },
+        { id: "settings"  as PageId, label: t("settings"),   icon: "⚙️", perm: "manage_settings" },
       ],
     },
   ];
