@@ -55,15 +55,21 @@ export function SaaSShell() {
           setScreen("saas_setup");
           return;
         }
-        // Sync companies from server to local memory
+        // Sync companies from server to local memory (requires superadmin token)
         try {
-          const res = await fetch("/api/saas-data");
-          if (res.ok) {
-            const { companies, globalCounters } = await res.json();
-            const db = SaaSDB.get();
-            db.companies = companies;
-            db.globalCounters = globalCounters;
-            SaaSDB.save();
+          const session = SaaSDB.getSession();
+          const token = session?.type === "superadmin" ? session.token : undefined;
+          if (token) {
+            const res = await fetch("/api/saas-data", {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const { companies, globalCounters } = await res.json();
+              const db = SaaSDB.get();
+              db.companies = companies;
+              db.globalCounters = globalCounters;
+              SaaSDB.save();
+            }
           }
         } catch {}
         boot();
