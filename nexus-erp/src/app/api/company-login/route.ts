@@ -35,8 +35,16 @@ export async function POST(req: NextRequest) {
   }
 
   user.lastLogin = new Date().toISOString();
-  // Save updated lastLogin back (fire and forget)
   saveTenantData(company.id, tenantData).catch(() => {});
 
-  return NextResponse.json({ company, user, tenantData });
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    type: "company",
+    role: user.role as any,
+    companyId: company.id,
+    permissions: user.permissions,
+  });
+
+  return NextResponse.json({ company, user, tenantData, token });
 }
