@@ -75,7 +75,7 @@ export function ERPShell() {
 
   return (
     <LangContext.Provider value={{ lang, t, dir }}>
-      <AuthContext.Provider value={{ user: authUser, logout: handleLogout }}>
+      <AuthContext.Provider value={{ user: authUser, logout: handleLogout, can: (p) => hasPermission(authUser, p) }}>
         {/* ── Global styles ─────────────────────── */}
         <style>{`
           html, body { direction: ${dir}; }
