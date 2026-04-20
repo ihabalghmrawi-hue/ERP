@@ -208,7 +208,7 @@ export function SaaSShell() {
       )}
 
       {screen === "erp" && company && (
-        <AuthContext.Provider value={{ user: tenantUser, logout: handleCompanyLogout }}>
+        <AuthContext.Provider value={{ user: tenantUser, logout: handleCompanyLogout, can: (p) => hasPermission(tenantUser, p) }}>
           <ERPApp
             company={company}
             lang={lang}
