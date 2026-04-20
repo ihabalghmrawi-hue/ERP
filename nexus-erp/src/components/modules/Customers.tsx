@@ -16,6 +16,7 @@ const empty = { name: "", email: "", phone: "", address: "", taxId: "", creditLi
 
 export function Customers({ addToast }: Props) {
   const { t } = useLang();
+  const { user } = useAuth();
   const db = DB.get();
   const [customers, setCustomers] = useState<Customer[]>([...db.customers]);
   const [showModal, setShowModal] = useState(false);
