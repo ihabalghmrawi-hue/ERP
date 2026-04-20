@@ -115,8 +115,8 @@ export function SaaSShell() {
     setScreen("super_panel");
   };
 
-  const handleSuperLogin = (admin: SuperAdmin) => {
-    SaaSDB.setSession({ type: "superadmin", id: admin.id, name: admin.name, email: admin.email });
+  const handleSuperLogin = (admin: SuperAdmin, token?: string) => {
+    SaaSDB.setSession({ type: "superadmin", id: admin.id, name: admin.name, email: admin.email, token });
     setSuperAdmin(admin);
     setScreen("super_panel");
   };
