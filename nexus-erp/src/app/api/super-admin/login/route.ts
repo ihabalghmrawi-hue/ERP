@@ -14,6 +14,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "بيانات الدخول غير صحيحة" }, { status: 401 });
   }
 
+  const token = signToken({
+    sub: admin.id,
+    email: admin.email,
+    type: "superadmin",
+    role: "superadmin",
+  });
+
   return NextResponse.json({
     id: admin.id,
     name: admin.name,
@@ -21,5 +28,6 @@ export async function POST(req: NextRequest) {
     role: admin.role,
     createdAt: admin.createdAt,
     lastLogin: admin.lastLogin,
+    token,
   });
 }
