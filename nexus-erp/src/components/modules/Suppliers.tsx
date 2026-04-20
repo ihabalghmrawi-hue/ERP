@@ -16,6 +16,7 @@ const empty = { name: "", email: "", phone: "", address: "", taxId: "", creditTe
 
 export function Suppliers({ addToast }: Props) {
   const { t } = useLang();
+  const { user } = useAuth();
   const db = DB.get();
   const [suppliers, setSuppliers] = useState<Supplier[]>([...db.suppliers]);
   const [showModal, setShowModal] = useState(false);
