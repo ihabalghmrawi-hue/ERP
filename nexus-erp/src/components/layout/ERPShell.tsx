@@ -74,6 +74,7 @@ export function ERPShell() {
     users:      <Users      addToast={addToast} />,
     settings:   <Settings   lang={lang} setLang={handleSetLang} />,
     pos:        <POS        addToast={addToast} />,
+    audit_log:  <AuditLog />,
   };
 
   return (
