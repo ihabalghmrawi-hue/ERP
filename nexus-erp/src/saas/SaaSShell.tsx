@@ -127,7 +127,7 @@ export function SaaSShell() {
     setScreen("super_login");
   };
 
-  const handleCompanyLogin = (co: Company, user: User) => {
+  const handleCompanyLogin = (co: Company, user: User, token?: string) => {
     const access = canAccess(co.id);
     if (!access.allowed) {
       setCompany(co);
