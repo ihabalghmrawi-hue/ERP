@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /workspaces/ERP && git add -u && CHANGED=$(git diff --cached --name-only) && if [ -n \"$CHANGED\" ]; then git commit -m \"auto: $(echo \"$CHANGED\" | head -1 | xargs basename) — sync to Vercel\" && git push origin main; fi 2>/dev/null || true",
+            "statusMessage": "Pushing to Vercel..."
+          }
+        ]
+      }
+    ]
+  }
+}
