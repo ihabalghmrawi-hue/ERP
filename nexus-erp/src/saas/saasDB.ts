@@ -300,12 +300,12 @@ export const SaaSDB = {
   },
 
   // ── Session Management ─────────────────────────────────
-  setSession(data: { type: "superadmin" | "company"; id: string; name: string; email: string; userId?: string }): void {
+  setSession(data: { type: "superadmin" | "company"; id: string; name: string; email: string; userId?: string; token?: string }): void {
     if (typeof window === "undefined") return;
     localStorage.setItem(SESSION_KEY, JSON.stringify(data));
   },
 
-  getSession(): { type: "superadmin" | "company"; id: string; name: string; email: string; userId?: string } | null {
+  getSession(): { type: "superadmin" | "company"; id: string; name: string; email: string; userId?: string; token?: string } | null {
     if (typeof window === "undefined") return null;
     try {
       const raw = localStorage.getItem(SESSION_KEY);
