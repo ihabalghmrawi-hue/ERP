@@ -37,6 +37,7 @@ export interface Customer {
   balance: number;
   currency: string;
   taxId?: string;
+  taxExempt?: boolean;
   status: "active" | "inactive";
 }
 
@@ -51,6 +52,7 @@ export interface Supplier {
   balance: number;
   currency: string;
   taxId?: string;
+  taxExempt?: boolean;
   status: "active" | "inactive";
 }
 
@@ -63,6 +65,7 @@ export interface Product {
   unitCost: number;
   sellPrice: number;
   taxRate: number;
+  taxExempt?: boolean;
   qty: number;
   reorderPoint: number;
   unit?: string;
