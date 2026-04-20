@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, JWTPayload, Role } from "./jwt";
+import { getDefaultPermissions, UserRole, Permission } from "@/lib/engine/permissions";
 
 export function getAuthPayload(req: NextRequest): JWTPayload | null {
   const authorization = req.headers.get("authorization");
