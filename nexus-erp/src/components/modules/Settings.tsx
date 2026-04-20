@@ -74,6 +74,7 @@ export function Settings({ lang, setLang }: Props) {
     Object.assign(db.settings, form);
     if (form.lang !== lang) setLang(form.lang as Lang);
     DB.save();
+    logActivity(user?.id || "", user?.name || "", "UPDATE", "Settings", "تعديل إعدادات النظام");
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
