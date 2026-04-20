@@ -35,12 +35,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "User email already exists for this company." }, { status: 409 });
   }
 
+  const customPermissions: string[] | undefined = body.permissions;
   const user: User = {
     id: uid(),
     name,
     email,
     password,
     role,
+    permissions: customPermissions ?? getDefaultPermissions(role as UserRole),
     status: "active",
     companyId: targetCompanyId,
     lastLogin: new Date().toISOString(),
