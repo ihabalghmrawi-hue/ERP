@@ -160,7 +160,8 @@ export interface User {
   name: string;
   email: string;
   password: string;
-  role: "admin" | "accountant" | "sales" | "viewer";
+  role: "admin" | "accountant" | "sales" | "cashier" | "viewer";
+  permissions: string[];
   status: "active" | "inactive";
   companyId?: string;
   lastLogin: string;
