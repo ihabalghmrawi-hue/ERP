@@ -88,7 +88,12 @@ export function SaaSShell() {
         const tenantState = TenantDB.get();
         (DB as any)._syncFromTenant(tenantState, co.id);
         setLang((tenantState.settings.lang as Lang) || "ar");
+        // Restore the logged-in user from tenant data
+        const restoredUser = session.userId
+          ? tenantState.users.find(u => u.id === session.userId) ?? null
+          : null;
         setCompany(co);
+        setTenantUser(restoredUser);
         setScreen("erp");
         return;
       }
