@@ -307,6 +307,25 @@ export function Inventory({ addToast }: Props) {
               {db.warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
+          {/* Tax Exemption */}
+          <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, border: `1px solid ${(prodForm as any).taxExempt ? C.success : C.border}`, background: (prodForm as any).taxExempt ? C.successLight : C.surfaceAlt }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={(prodForm as any).taxExempt || false}
+                onChange={(e) => setProdForm({ ...prodForm, taxExempt: e.target.checked } as any)}
+                style={{ width: 16, height: 16, cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: (prodForm as any).taxExempt ? C.success : C.text }}>
+                  🟢 معفى من ضريبة القيمة المضافة
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                  عند التحديد، لن يتم احتساب VAT على هذا المنتج في أي فاتورة
+                </div>
+              </div>
+            </label>
+          </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
             <button style={{ ...S.btn("outline") }} onClick={() => setShowProduct(false)}>{t("cancel")}</button>
             <button style={{ ...S.btn("primary"), border: "none" }} onClick={handleAddProduct}>{t("save")}</button>
