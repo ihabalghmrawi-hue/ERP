@@ -56,7 +56,7 @@ export function ERPShell() {
     dashboard: t("dashboard"), sales: t("sales"), purchases: t("purchases"),
     inventory: t("inventory"), treasury: t("treasury"), customers: t("customers"),
     suppliers: t("suppliers"), accounting: t("accounting"), reports: t("reports"),
-    users: t("users"), settings: t("settings"),
+    users: t("users"), settings: t("settings"), pos: "POS",
   };
 
   /* ── Page content map ─────────────── */
