@@ -7,6 +7,7 @@ import { canAccess, shouldShowRenewalWarning, getDaysLeft } from "./accessGuard"
 import { Company, SuperAdmin } from "./types";
 import { LangContext, createTranslator } from "@/hooks/useLang";
 import { AuthContext } from "@/hooks/useAuth";
+import { hasPermission } from "@/lib/engine/permissions";
 import { useToast } from "@/hooks/useToast";
 import { DB } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
