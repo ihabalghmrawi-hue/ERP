@@ -8,7 +8,7 @@ import { User } from "@/lib/db/database";
 import { C, S } from "@/lib/engine/design";
 
 interface Props {
-  onLogin: (company: Company, user: User) => void;
+  onLogin: (company: Company, user: User, token?: string) => void;
   onSuperAdmin: () => void;
   onRegister: () => void;
 }
