@@ -7,62 +7,77 @@ import { DB } from "@/lib/db/database";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
-  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings";
+  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
+  | "pos";
 
 interface SidebarProps {
   page: PageId;
   onNavigate: (page: PageId) => void;
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  admin:      "مدير",
+  accountant: "محاسب",
+  sales:      "مبيعات",
+  cashier:    "كاشير",
+  viewer:     "مشاهد",
+};
+
 export function Sidebar({ page, onNavigate }: SidebarProps) {
   const { t, dir } = useLang();
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
   const settings = DB.get().settings;
 
-  const nav = [
+  const allSections = [
     {
       section: t("overview"),
-      items: [{ id: "dashboard" as PageId, label: t("dashboard"), icon: "🏠" }],
+      items: [
+        { id: "dashboard" as PageId, label: t("dashboard"), icon: "🏠", perm: "view_dashboard" },
+        { id: "pos"       as PageId, label: "نقطة البيع",   icon: "🖥️", perm: "access_pos"    },
+      ],
     },
     {
       section: t("operations"),
       items: [
-        { id: "sales"     as PageId, label: t("sales"),     icon: "📤" },
-        { id: "purchases" as PageId, label: t("purchases"), icon: "📥" },
-        { id: "inventory" as PageId, label: t("inventory"), icon: "📦" },
-        { id: "treasury"  as PageId, label: t("treasury"),  icon: "🏦" },
+        { id: "sales"     as PageId, label: t("sales"),     icon: "📤", perm: "view_sales"     },
+        { id: "purchases" as PageId, label: t("purchases"), icon: "📥", perm: "view_purchases" },
+        { id: "inventory" as PageId, label: t("inventory"), icon: "📦", perm: "view_inventory" },
+        { id: "treasury"  as PageId, label: t("treasury"),  icon: "🏦", perm: "view_treasury"  },
       ],
     },
     {
       section: t("masterData"),
       items: [
-        { id: "customers" as PageId, label: t("customers"), icon: "👥" },
-        { id: "suppliers" as PageId, label: t("suppliers"), icon: "🏢" },
+        { id: "customers" as PageId, label: t("customers"), icon: "👥", perm: "view_customers" },
+        { id: "suppliers" as PageId, label: t("suppliers"), icon: "🏢", perm: "view_suppliers" },
       ],
     },
     {
       section: t("finance"),
       items: [
-        { id: "accounting" as PageId, label: t("accounting"), icon: "📊" },
-        { id: "reports"    as PageId, label: t("reports"),    icon: "📈" },
+        { id: "accounting" as PageId, label: t("accounting"), icon: "📊", perm: "view_accounting" },
+        { id: "reports"    as PageId, label: t("reports"),    icon: "📈", perm: "view_reports"    },
       ],
     },
     {
       section: t("system"),
       items: [
-        { id: "users"    as PageId, label: t("users"),    icon: "👤" },
-        { id: "settings" as PageId, label: t("settings"), icon: "⚙️" },
+        { id: "users"    as PageId, label: t("users"),    icon: "👤", perm: "manage_users"    },
+        { id: "settings" as PageId, label: t("settings"), icon: "⚙️", perm: "manage_settings" },
       ],
     },
   ];
 
+  // Filter each section's items by permission; drop empty sections
+  const nav = allSections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((item) => can(item.perm as any)),
+    }))
+    .filter((sec) => sec.items.length > 0);
+
   return (
-    <div
-      style={{
-        ...S.sidebar,
-        order: dir === "rtl" ? 1 : 0,
-      }}
-    >
+    <div style={{ ...S.sidebar, order: dir === "rtl" ? 1 : 0 }}>
       {/* Logo */}
       <div style={S.sidebarLogo}>
         <div style={S.logoText}>
@@ -92,57 +107,30 @@ export function Sidebar({ page, onNavigate }: SidebarProps) {
       </nav>
 
       {/* User profile + logout */}
-      <div
-        style={{
-          padding: 14,
-          borderTop: `1px solid rgba(255,255,255,0.08)`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              background: "rgba(93,173,226,0.2)",
-              border: `1.5px solid ${C.sidebarAccent}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              color: C.sidebarAccent,
-              fontSize: 14,
-              flexShrink: 0,
-            }}
-          >
+      <div style={{ padding: 14, borderTop: `1px solid rgba(255,255,255,0.08)` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: "50%",
+            background: "rgba(93,173,226,0.2)",
+            border: `1.5px solid ${C.sidebarAccent}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 800, color: C.sidebarAccent, fontSize: 14, flexShrink: 0,
+          }}>
             {user?.name?.slice(0, 1)}
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
-              {user?.name}
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: C.sidebarText, opacity: 0.6 }}>
-              {user?.role}
+              {ROLE_LABEL[user?.role || ""] || user?.role}
             </div>
           </div>
         </div>
         <button
           style={{
-            ...S.btn("ghost"),
-            color: C.sidebarText,
-            fontSize: 12,
-            padding: "6px 0",
-            width: "100%",
+            ...S.btn("ghost"), color: C.sidebarText, fontSize: 12,
+            padding: "6px 0", width: "100%",
             textAlign: dir === "rtl" ? "right" : "left",
-            opacity: 0.7,
-            border: "none",
+            opacity: 0.7, border: "none",
           }}
           onClick={logout}
         >
