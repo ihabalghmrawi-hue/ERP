@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, loadTenantData, saveTenantData } from "@/lib/server/storage";
-import { requireAuth } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/auth";
 import { uid } from "@/lib/server/uid";
 import { User } from "@/lib/db/database";
 import { getDefaultPermissions, UserRole } from "@/lib/engine/permissions";
