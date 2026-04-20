@@ -41,6 +41,7 @@ export function ERPShell() {
 
   const handleLogin  = (user: User) => { setAuthUser(user); setPage("dashboard"); };
   const handleLogout = () => setAuthUser(null);
+  const handleNavigate = (p: PageId) => setPage(p);
 
   const handleSetLang = (newLang: Lang) => {
     setLang(newLang);
