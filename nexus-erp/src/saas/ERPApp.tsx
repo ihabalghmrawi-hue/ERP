@@ -30,7 +30,7 @@ import { AuditLog }  from "@/components/modules/AuditLog";
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos";
+  | "pos" | "audit_log";
 
 interface Props {
   company: Company;
