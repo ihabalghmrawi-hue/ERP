@@ -30,7 +30,7 @@ import { AuditLog }  from "@/components/modules/AuditLog";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
-  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos";
+  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos" | "audit_log";
 
 export function ERPShell() {
   const [lang, setLang]       = useState<Lang>(() => (DB.get().settings.lang as Lang) || "ar");
