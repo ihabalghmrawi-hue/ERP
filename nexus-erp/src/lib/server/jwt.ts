@@ -11,6 +11,7 @@ export interface JWTPayload {
   type: "superadmin" | "company";
   role: Role;
   companyId?: string;
+  permissions?: string[];
 }
 
 export function signToken(payload: Omit<JWTPayload, "exp">) {
