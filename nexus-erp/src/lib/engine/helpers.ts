@@ -6,14 +6,33 @@ export function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function fmt(n: number | null | undefined, curr = "SAR"): string {
+export function fmt(n: number | null | undefined, curr?: string): string {
   if (n === undefined || n === null) return "—";
-  return new Intl.NumberFormat("ar-SA", {
-    style: "currency",
-    currency: curr,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
+  let currency = curr;
+  if (!currency) {
+    try {
+      const { DB } = require("../db/database");
+      currency = DB.get().settings.baseCurrency || "SAR";
+    } catch {
+      currency = "SAR";
+    }
+  }
+  try {
+    return new Intl.NumberFormat("ar-SA", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n);
+  } catch {
+    // Fallback if currency code is invalid
+    return new Intl.NumberFormat("ar-SA", {
+      style: "currency",
+      currency: "SAR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n);
+  }
 }
 
 export function fmtDate(d: string | null | undefined): string {
