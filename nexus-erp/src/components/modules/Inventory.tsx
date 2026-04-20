@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 
 interface Props { addToast: (msg: string, type?: "success" | "error" | "info") => void; }
 
-const emptyProd = { name: "", sku: "", category: "", warehouseId: "", unitCost: "", sellPrice: "", taxRate: "15", qty: "0", reorderPoint: "5", unit: "" };
+const emptyProd = { name: "", sku: "", category: "", warehouseId: "", unitCost: "", sellPrice: "", taxRate: "15", taxExempt: false, qty: "0", reorderPoint: "5", unit: "" };
 const emptyWH   = { name: "", location: "", manager: "" };
 const emptyTransfer = { productId: "", fromWarehouseId: "", toWarehouseId: "", qty: "", notes: "" };
 
