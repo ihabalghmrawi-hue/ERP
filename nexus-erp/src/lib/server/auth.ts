@@ -27,3 +27,32 @@ export function requireAuth(req: NextRequest, allowedRoles: Role[]) {
 export function requireSuperAdmin(req: NextRequest) {
   return requireAuth(req, ["superadmin"]);
 }
+
+export function requirePermission(req: NextRequest, permission: Permission) {
+  const payload = getAuthPayload(req);
+  if (!payload) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  if (payload.type === "superadmin") {
+    return { payload };
+  }
+  const perms: string[] = payload.permissions ?? getDefaultPermissions(payload.role as UserRole);
+  if (!perms.includes(permission)) {
+    return { error: NextResponse.json({ error: "Forbidden", required: permission }, { status: 403 }) };
+  }
+  return { payload };
+}
+
+export function requireCompanyAccess(req: NextRequest, companyId: string) {
+  const payload = getAuthPayload(req);
+  if (!payload) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  if (payload.type === "superadmin") {
+    return { payload };
+  }
+  if (payload.companyId !== companyId) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  return { payload };
+}
