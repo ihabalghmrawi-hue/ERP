@@ -5,6 +5,7 @@ import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { DB } from "@/lib/db/database";
 import { AccountingEngine } from "@/lib/engine/accounting";
+import { TaxService } from "@/lib/engine/tax";
 import { fmt, fmtDate } from "@/lib/engine/helpers";
 import { KPI }         from "@/components/ui/KPI";
 import { DataTable }   from "@/components/ui/DataTable";
