@@ -65,6 +65,7 @@ interface Props {
 
 export function Settings({ lang, setLang }: Props) {
   const { t } = useLang();
+  const { user } = useAuth();
   const db = DB.get();
   const [form, setForm] = useState({ ...db.settings });
   const [saved, setSaved] = useState(false);
