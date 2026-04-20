@@ -7,6 +7,7 @@ import { C, S } from "@/lib/engine/design";
 import { User } from "@/lib/db/database";
 import { TenantDB } from "../tenantDB";
 import { uid, today } from "@/lib/engine/helpers";
+import { ALL_PERMISSIONS } from "@/lib/engine/permissions";
 
 interface Props {
   admin: SuperAdmin;
