@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
   const user = {
     id: uid(), name: ownerName, email,
     password, role: "admin" as const,
+    permissions: [...ALL_PERMISSIONS],
     status: "active" as const,
     companyId: id,
     lastLogin: new Date().toISOString(),
