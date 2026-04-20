@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/useToast";
 import { DB, User } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
 import { S } from "@/lib/engine/design";
+import { hasPermission } from "@/lib/engine/permissions";
 
 import { AuthScreen } from "./AuthScreen";
 import { Sidebar } from "./Sidebar";
