@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,8 +48,31 @@ export function Users({ addToast }: Props) {
   const { user: currentUser } = useAuth();
   const db = DB.get();
 
-  const [users, setUsers] = useState<User[]>([...db.users]);
-  const [showModal, setShowModal] = useState(false);
+  const [users, setUsers]             = useState<User[]>([...db.users]);
+  const [showModal, setShowModal]     = useState(false);
+  const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetToken, setResetToken]   = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleAdminReset = useCallback(async (u: User) => {
+    setResetUserId(u.id);
+    setResetToken(null);
+    setResetLoading(true);
+    try {
+      const res  = await fetch("/api/auth/reset-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: u.email }),
+      });
+      const data = await res.json();
+      setResetToken(data.token ?? null);
+    } catch {
+      addToast("فشل إنشاء رمز إعادة التعيين", "error");
+      setResetUserId(null);
+    } finally {
+      setResetLoading(false);
+    }
+  }, [addToast]);
   const [form, setForm] = useState<FormState>({
     name: "", email: "", password: "",
     role: "accountant",
@@ -158,6 +181,15 @@ export function Users({ addToast }: Props) {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {currentUser?.role === "admin" && (
+                    <button
+                      title="إعادة تعيين كلمة المرور"
+                      style={{ ...S.btn("ghost"), padding: "4px 8px", fontSize: 11, border: `1px solid ${C.border}` }}
+                      onClick={() => handleAdminReset(u)}
+                    >
+                      🔑
+                    </button>
+                  )}
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontWeight: 700, color: C.text }}>{u.name}</div>
                     <div style={{ fontSize: 11, color: C.textMuted }}>{u.email}</div>
@@ -351,6 +383,35 @@ export function Users({ addToast }: Props) {
             <button style={{ ...S.btn("outline") }} onClick={() => { setShowModal(false); resetForm(); }}>{t("cancel")}</button>
             <button style={{ ...S.btn("primary"), border: "none" }} onClick={handleCreate}>{t("createAccount")}</button>
           </div>
+        </Modal>
+      )}
+
+      {/* Modal: Admin password reset token */}
+      {resetUserId && (
+        <Modal title="إعادة تعيين كلمة المرور" onClose={() => { setResetUserId(null); setResetToken(null); }}>
+          {resetLoading ? (
+            <div style={{ textAlign: "center", padding: 32, color: C.textMuted }}>جارٍ إنشاء الرمز...</div>
+          ) : resetToken ? (
+            <div>
+              <div style={{ fontSize: 13, color: C.textSec, marginBottom: 16 }}>
+                شارك هذا الرمز مع المستخدم. صالح لمدة <strong>ساعة واحدة</strong> ولمرة واحدة فقط.
+              </div>
+              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, fontFamily: "monospace", fontSize: 12, wordBreak: "break-all", color: C.text, marginBottom: 16 }}>
+                {resetToken}
+              </div>
+              <button
+                style={{ ...S.btn("outline"), width: "100%", fontSize: 12 }}
+                onClick={() => { navigator.clipboard.writeText(resetToken); addToast("تم نسخ الرمز", "success"); }}
+              >
+                📋 نسخ الرمز
+              </button>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 12, textAlign: "center" }}>
+                المستخدم يمكنه استخدام هذا الرمز من خلال صفحة تسجيل الدخول ← "نسيت كلمة المرور"
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 24, color: C.danger }}>فشل إنشاء الرمز. تأكد من اتصال الخادم.</div>
+          )}
         </Modal>
       )}
     </div>

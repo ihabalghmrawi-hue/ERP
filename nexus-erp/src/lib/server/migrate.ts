@@ -74,6 +74,18 @@ const MIGRATIONS = [
    );
    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user    ON refresh_tokens (user_id);
    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens (expires_at);`,
+
+  // 004 — password reset tokens
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+     token      TEXT        PRIMARY KEY,
+     email      TEXT        NOT NULL,
+     company_id TEXT,
+     expires_at TIMESTAMPTZ NOT NULL,
+     used       BOOLEAN     NOT NULL DEFAULT FALSE,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   );
+   CREATE INDEX IF NOT EXISTS idx_prt_email   ON password_reset_tokens (email);
+   CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens (expires_at);`,
 ];
 
 export async function runMigrations(): Promise<void> {

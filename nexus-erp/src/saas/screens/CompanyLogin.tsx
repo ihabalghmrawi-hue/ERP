@@ -13,48 +13,50 @@ interface Props {
   onRegister: () => void;
 }
 
-export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [totpToken, setTotpToken] = useState("");
-  const [needs2fa, setNeeds2fa] = useState(false);
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
+type Screen = "login" | "2fa" | "forgot" | "reset";
 
-  const handle = async () => {
+export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
+  const [screen, setScreen]         = useState<Screen>("login");
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
+  const [totpToken, setTotpToken]   = useState("");
+  const [error, setError]           = useState("");
+  const [loading, setLoading]       = useState(false);
+
+  // Forgot password state
+  const [forgotEmail, setForgotEmail]   = useState("");
+  const [resetResult, setResetResult]   = useState<{ token?: string; resetLink?: string; message?: string } | null>(null);
+
+  // Reset password state
+  const [resetToken, setResetToken]     = useState("");
+  const [newPassword, setNewPassword]   = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetDone, setResetDone]       = useState(false);
+
+  const goLogin = () => { setScreen("login"); setError(""); setResetResult(null); setResetDone(false); };
+
+  // ── Login ──────────────────────────────────────────────────
+  const handleLogin = async () => {
     if (!email || !password) { setError("البريد وكلمة المرور مطلوبان"); return; }
-    if (needs2fa && !totpToken) { setError("أدخل رمز التحقق من تطبيق المصادقة"); return; }
-    setError("");
-    setLoading(true);
+    if (screen === "2fa" && !totpToken) { setError("أدخل رمز التحقق من تطبيق المصادقة"); return; }
+    setError(""); setLoading(true);
     try {
-      const res = await fetch("/api/company-login", {
+      const res  = await fetch("/api/company-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, totpToken: totpToken || undefined }),
       });
       const data = await res.json();
 
-      // 2FA required — show TOTP input
-      if (data.error === "2fa_required") {
-        setNeeds2fa(true);
-        setError("");
-        setLoading(false);
-        return;
-      }
-
+      if (data.error === "2fa_required") { setScreen("2fa"); setLoading(false); return; }
       if (!res.ok) { setError(data.error || "البريد أو كلمة المرور غير صحيحة"); return; }
 
       const { company, user, tenantData, token } = data;
-
       const db = SaaSDB.get();
-      if (!db.companies.find(c => c.id === company.id)) {
-        db.companies.push(company);
-        SaaSDB.save();
-      }
+      if (!db.companies.find(c => c.id === company.id)) { db.companies.push(company); SaaSDB.save(); }
       TenantDB.load(company.id);
       Object.assign(TenantDB.get(), tenantData);
       TenantDB.save();
-
       onLogin(company, user, token);
     } catch {
       setError("حدث خطأ في الاتصال بالخادم");
@@ -63,39 +65,106 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
     }
   };
 
+  // ── Forgot password ────────────────────────────────────────
+  const handleForgot = async () => {
+    if (!forgotEmail) { setError("أدخل بريدك الإلكتروني"); return; }
+    setError(""); setLoading(true);
+    try {
+      const res  = await fetch("/api/auth/reset-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      setResetResult(data);
+    } catch {
+      setError("حدث خطأ في الاتصال بالخادم");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Reset password ─────────────────────────────────────────
+  const handleReset = async () => {
+    if (!resetToken) { setError("أدخل رمز إعادة التعيين"); return; }
+    if (!newPassword || newPassword.length < 8) { setError("كلمة المرور يجب أن تكون 8 أحرف على الأقل"); return; }
+    if (newPassword !== confirmPassword) { setError("كلمتا المرور غير متطابقتان"); return; }
+    setError(""); setLoading(true);
+    try {
+      const res  = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "الرمز غير صالح"); return; }
+      setResetDone(true);
+    } catch {
+      setError("حدث خطأ في الاتصال بالخادم");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cardStyle = { background: C.surface, borderRadius: 16, padding: 40, boxShadow: "0 8px 40px rgba(0,0,0,0.12)" };
+  const linkBtn   = { background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" } as const;
+
   return (
-    <div style={{ minHeight: "100vh", background: `linear-gradient(135deg, #F7F6F3 0%, #E8E4DC 100%)`, display: "flex", alignItems: "center", justifyContent: "center", direction: "rtl" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #F7F6F3 0%, #E8E4DC 100%)", display: "flex", alignItems: "center", justifyContent: "center", direction: "rtl" }}>
       <div style={{ width: 420 }}>
+
+        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ fontSize: 44, marginBottom: 10 }}>📊</div>
           <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>BOB ERP</div>
           <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>نظام المحاسبة وإدارة الأعمال</div>
         </div>
 
-        <div style={{ background: C.surface, borderRadius: 16, padding: 40, boxShadow: "0 8px 40px rgba(0,0,0,0.12)" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 24, textAlign: "center" }}>
-            تسجيل الدخول
+        {/* ── Login screen ── */}
+        {screen === "login" && (
+          <div style={cardStyle}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 24, textAlign: "center" }}>تسجيل الدخول</div>
+
+            <div style={S.formGroup}>
+              <label style={S.label}>البريد الإلكتروني</label>
+              <input style={S.input} type="email" value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                placeholder="your@company.com" autoFocus />
+            </div>
+            <div style={S.formGroup}>
+              <label style={S.label}>كلمة المرور</label>
+              <input style={S.input} type="password" value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                placeholder="••••••••" />
+            </div>
+
+            {/* Forgot password link */}
+            <div style={{ textAlign: "left", marginBottom: 16, marginTop: -8 }}>
+              <button style={{ ...linkBtn, fontSize: 11, color: C.textMuted, fontWeight: 400 }}
+                onClick={() => { setForgotEmail(email); setScreen("forgot"); setError(""); }}>
+                نسيت كلمة المرور؟
+              </button>
+            </div>
+
+            {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+
+            <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
+              onClick={handleLogin} disabled={loading}>
+              {loading ? "جارٍ التحقق..." : "دخول"}
+            </button>
+
+            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
+              <span style={{ fontSize: 12, color: C.textMuted }}>ليس لديك حساب؟ </span>
+              <button style={linkBtn} onClick={onRegister}>سجّل شركتك الآن</button>
+            </div>
           </div>
+        )}
 
-          {!needs2fa ? (
-            <>
-              <div style={S.formGroup}>
-                <label style={S.label}>البريد الإلكتروني</label>
-                <input style={S.input} type="email" value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") handle(); }}
-                  placeholder="your@company.com" autoFocus />
-              </div>
-
-              <div style={S.formGroup}>
-                <label style={S.label}>كلمة المرور</label>
-                <input style={S.input} type="password" value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") handle(); }}
-                  placeholder="••••••••" />
-              </div>
-            </>
-          ) : (
+        {/* ── 2FA screen ── */}
+        {screen === "2fa" && (
+          <div style={cardStyle}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🔐</div>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>التحقق الثنائي</div>
@@ -104,41 +173,133 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
               </div>
               <input
                 style={{ ...S.input, textAlign: "center", fontSize: 24, letterSpacing: 8, direction: "ltr", width: "100%" }}
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
+                type="text" inputMode="numeric" maxLength={6}
                 value={totpToken}
                 onChange={e => setTotpToken(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={e => { if (e.key === "Enter") handle(); }}
-                autoFocus
-                placeholder="000000"
-              />
-              <button
-                style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", marginTop: 8, textDecoration: "underline" }}
-                onClick={() => { setNeeds2fa(false); setTotpToken(""); setError(""); }}
-              >
+                onKeyDown={e => { if (e.key === "Enter") handleLogin(); }}
+                autoFocus placeholder="000000" />
+              <button style={{ ...linkBtn, marginTop: 8 }}
+                onClick={() => { setScreen("login"); setTotpToken(""); setError(""); }}>
                 رجوع إلى تسجيل الدخول
               </button>
             </div>
-          )}
+            {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+            <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
+              onClick={handleLogin} disabled={loading}>
+              {loading ? "جارٍ التحقق..." : "تحقق"}
+            </button>
+          </div>
+        )}
 
-          {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
-
-          <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }} onClick={handle} disabled={loading}>
-            {loading ? "جارٍ التحقق..." : needs2fa ? "تحقق" : "دخول"}
-          </button>
-
-          {!needs2fa && (
-            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
-              <span style={{ fontSize: 12, color: C.textMuted }}>ليس لديك حساب؟ </span>
-              <button style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }} onClick={onRegister}>
-                سجّل شركتك الآن
-              </button>
+        {/* ── Forgot password screen ── */}
+        {screen === "forgot" && (
+          <div style={cardStyle}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>🔑</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>استعادة كلمة المرور</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
+                أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين
+              </div>
             </div>
-          )}
-        </div>
 
-        {!needs2fa && (
+            {!resetResult ? (
+              <>
+                <div style={S.formGroup}>
+                  <label style={S.label}>البريد الإلكتروني</label>
+                  <input style={S.input} type="email" value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleForgot(); }}
+                    placeholder="your@company.com" autoFocus />
+                </div>
+                {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+                <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
+                  onClick={handleForgot} disabled={loading}>
+                  {loading ? "جارٍ الإرسال..." : "إرسال رابط الاستعادة"}
+                </button>
+              </>
+            ) : (
+              <div>
+                <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: "#166534", fontWeight: 700, marginBottom: 8 }}>✓ {resetResult.message}</div>
+                  {resetResult.token && (
+                    <>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>رمز إعادة التعيين (صالح لمدة ساعة):</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 11, background: C.surfaceAlt, padding: "6px 10px", borderRadius: 6, wordBreak: "break-all", color: C.text, marginBottom: 10 }}>
+                        {resetResult.token}
+                      </div>
+                      <button
+                        style={{ ...S.btn("outline"), fontSize: 11, padding: "6px 12px", width: "100%", marginBottom: 8 }}
+                        onClick={() => { setResetToken(resetResult.token!); setScreen("reset"); setError(""); }}>
+                        إعادة تعيين كلمة المرور الآن ←
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 12 }}>
+              <button style={linkBtn} onClick={goLogin}>رجوع إلى تسجيل الدخول</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Reset password screen ── */}
+        {screen === "reset" && (
+          <div style={cardStyle}>
+            {resetDone ? (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 8 }}>تم تغيير كلمة المرور</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 24 }}>يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة</div>
+                <button style={{ ...S.btn("primary"), border: "none", padding: "10px 28px" }} onClick={goLogin}>
+                  تسجيل الدخول
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>🔒</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>كلمة مرور جديدة</div>
+                </div>
+
+                <div style={S.formGroup}>
+                  <label style={S.label}>رمز إعادة التعيين</label>
+                  <input style={{ ...S.input, direction: "ltr", fontFamily: "monospace", fontSize: 12 }}
+                    type="text" value={resetToken}
+                    onChange={e => setResetToken(e.target.value.trim())}
+                    placeholder="الصق الرمز هنا" />
+                </div>
+                <div style={S.formGroup}>
+                  <label style={S.label}>كلمة المرور الجديدة</label>
+                  <input style={S.input} type="password" value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="8 أحرف على الأقل" autoFocus />
+                </div>
+                <div style={S.formGroup}>
+                  <label style={S.label}>تأكيد كلمة المرور</label>
+                  <input style={S.input} type="password" value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleReset(); }}
+                    placeholder="أعد كتابة كلمة المرور" />
+                </div>
+
+                {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+
+                <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
+                  onClick={handleReset} disabled={loading}>
+                  {loading ? "جارٍ التحديث..." : "حفظ كلمة المرور الجديدة"}
+                </button>
+                <div style={{ textAlign: "center", marginTop: 12 }}>
+                  <button style={linkBtn} onClick={goLogin}>رجوع</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Super admin link — only on login screen */}
+        {screen === "login" && (
           <div style={{ textAlign: "center", marginTop: 16 }}>
             <button style={{ ...S.btn("ghost"), fontSize: 11, color: C.textMuted, border: "none", opacity: 0.5 }} onClick={onSuperAdmin}>
               دخول المدير العام
