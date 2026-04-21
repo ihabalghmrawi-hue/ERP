@@ -3,7 +3,7 @@ import { loadSaaSData, saveSaaSData } from "@/lib/server/storage";
 import { requireSuperAdmin } from "@/lib/server/auth";
 
 export async function GET(req: NextRequest) {
-  const auth = requireSuperAdmin(req);
+  const auth = await requireSuperAdmin(req);
   if (auth.error) return auth.error;
 
   const data = await loadSaaSData();
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
 // Accepts the full SaaS state from the client and persists it to PostgreSQL.
 export async function POST(req: NextRequest) {
-  const auth = requireSuperAdmin(req);
+  const auth = await requireSuperAdmin(req);
   if (auth.error) return auth.error;
 
   const body = await req.json();

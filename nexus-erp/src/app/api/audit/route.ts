@@ -13,7 +13,7 @@ function computeHash(payload: any) {
 
 export async function POST(req: NextRequest) {
   // Only authenticated users can write audit entries
-  const auth = getAuthPayload(req);
+  const auth = await getAuthPayload(req);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   // Only admins and superadmins can read audit logs
-  const auth = getAuthPayload(req);
+  const auth = await getAuthPayload(req);
   if (!auth || (auth.role !== "superadmin" && auth.role !== "admin")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

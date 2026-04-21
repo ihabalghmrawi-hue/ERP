@@ -8,7 +8,7 @@ import { hashPassword, validatePasswordStrength } from "@/lib/server/password";
 import { sanitizeUser } from "@/lib/server/sanitize";
 
 export async function POST(req: NextRequest) {
-  const auth = requirePermission(req, "manage_users");
+  const auth = await requirePermission(req, "manage_users");
   if (auth.error) return auth.error;
 
   const payload = auth.payload;

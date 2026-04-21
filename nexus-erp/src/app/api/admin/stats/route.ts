@@ -13,7 +13,7 @@ function cutoffDate(period: Period): string {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireSuperAdmin(req);
+  const auth = await requireSuperAdmin(req);
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(req.url);

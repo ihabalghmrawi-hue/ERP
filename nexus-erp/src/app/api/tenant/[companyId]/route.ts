@@ -4,7 +4,7 @@ import { sanitizeTenantForClient } from "@/lib/server/sanitize";
 import { requireCompanyAccess } from "@/lib/server/auth";
 
 export async function GET(req: NextRequest, { params }: { params: { companyId: string } }) {
-  const auth = requireCompanyAccess(req, params.companyId);
+  const auth = await requireCompanyAccess(req, params.companyId);
   if (auth.error) return auth.error;
 
   const data = await loadTenantData(params.companyId);
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { companyId: s
 }
 
 export async function POST(req: NextRequest, { params }: { params: { companyId: string } }) {
-  const auth = requireCompanyAccess(req, params.companyId);
+  const auth = await requireCompanyAccess(req, params.companyId);
   if (auth.error) return auth.error;
 
   const data = await req.json();

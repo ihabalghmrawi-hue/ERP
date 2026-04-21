@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed-superadmin": "node scripts/seed-superadmin.js",
-    "migrate": "node scripts/migrate-db.js"
+    "migrate": "node scripts/migrate-db.js",
+    "backup": "node scripts/backup.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.37.0",

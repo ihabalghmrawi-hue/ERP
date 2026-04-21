@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { SaaSDB } from "./saasDB";
 import { TenantDB } from "./tenantDB";
 import { canAccess, shouldShowRenewalWarning, getDaysLeft } from "./accessGuard";
@@ -23,15 +23,18 @@ import { CompanyRegister }   from "./screens/CompanyRegister";
 import { SubscriptionWall }  from "./screens/SubscriptionWall";
 import { ERPApp }            from "./ERPApp";
 
+// Refresh access token 3 minutes before its 15-minute expiry
+const REFRESH_INTERVAL_MS = 12 * 60 * 1000;
+
 type RootScreen =
   | "loading"
-  | "saas_setup"          // first time: create super admin
-  | "super_login"         // super admin login
-  | "super_panel"         // super admin dashboard
-  | "company_login"       // tenant login
-  | "company_register"    // new company registration
-  | "subscription_wall"   // expired / suspended
-  | "erp"                 // main ERP app
+  | "saas_setup"
+  | "super_login"
+  | "super_panel"
+  | "company_login"
+  | "company_register"
+  | "subscription_wall"
+  | "erp"
 
 export function SaaSShell() {
   const [screen, setScreen]         = useState<RootScreen>("loading");
@@ -39,12 +42,57 @@ export function SaaSShell() {
   const [superAdmin, setSuperAdmin] = useState<SuperAdmin | null>(null);
   const [company, setCompany]       = useState<Company | null>(null);
   const [tenantUser, setTenantUser] = useState<User | null>(null);
-  const { toasts, addToast }        = useToast();
+  // Access token lives in memory — never in localStorage
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { toasts, addToast } = useToast();
 
   const t   = useCallback(createTranslator(lang), [lang]);
   const dir = lang === "ar" ? "rtl" : "ltr";
 
-  // ── Boot: decide which screen to show ──────────────────
+  // ── Token refresh logic ────────────────────────────────────────────────
+  async function tryRefreshToken(): Promise<string | null> {
+    try {
+      const res = await fetch("/api/auth/refresh", { method: "POST" });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const newToken: string = data.token;
+      setAccessToken(newToken);
+      // Keep session token in SaaSDB in sync (used by saasDB background sync)
+      const session = SaaSDB.getSession();
+      if (session) {
+        SaaSDB.setSession({ ...session, token: newToken });
+        if (session.type === "superadmin") SaaSDB.setAdminToken(newToken);
+        if (session.type === "company")    TenantDB.setToken(newToken);
+      }
+      return newToken;
+    } catch {
+      return null;
+    }
+  }
+
+  function startRefreshTimer() {
+    stopRefreshTimer();
+    refreshTimerRef.current = setInterval(tryRefreshToken, REFRESH_INTERVAL_MS);
+  }
+
+  function stopRefreshTimer() {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }
+
+  async function callLogoutApi(token: string | null) {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch { /* best-effort */ }
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch("/api/setup")
       .then(r => r.json())
@@ -55,14 +103,15 @@ export function SaaSShell() {
           setScreen("saas_setup");
           return;
         }
-        // Sync companies from server to local memory (requires superadmin token)
-        try {
-          const session = SaaSDB.getSession();
-          const token = session?.type === "superadmin" ? session.token : undefined;
-          if (token) {
-            const res = await fetch("/api/saas-data", {
-              headers: { Authorization: `Bearer ${token}` },
-            });
+        // Try to get a fresh access token via refresh cookie (works across page reloads)
+        const freshToken = await tryRefreshToken();
+
+        // Sync saas-data if we have a superadmin token
+        const session = SaaSDB.getSession();
+        const token = freshToken ?? session?.token;
+        if (token && session?.type === "superadmin") {
+          try {
+            const res = await fetch("/api/saas-data", { headers: { Authorization: `Bearer ${token}` } });
             if (res.ok) {
               const { companies, globalCounters } = await res.json();
               const db = SaaSDB.get();
@@ -70,18 +119,28 @@ export function SaaSShell() {
               db.globalCounters = globalCounters;
               SaaSDB.save();
             }
-          }
-        } catch {}
-        boot();
+          } catch {}
+        }
+
+        if (freshToken) setAccessToken(freshToken);
+        boot(freshToken ?? undefined);
       })
       .catch(() => boot());
+
+    return () => stopRefreshTimer();
   }, []);
 
-  function boot() {
+  function boot(token?: string) {
     const session = SaaSDB.getSession();
     if (session?.type === "superadmin") {
       const admin = SaaSDB.get().superAdmins.find(a => a.id === session.id);
-      if (admin) { setSuperAdmin(admin); setScreen("super_panel"); return; }
+      if (admin) {
+        if (token) { SaaSDB.setAdminToken(token); }
+        setSuperAdmin(admin);
+        startRefreshTimer();
+        setScreen("super_panel");
+        return;
+      }
     }
     if (session?.type === "company") {
       const co = SaaSDB.getCompany(session.id);
@@ -89,7 +148,8 @@ export function SaaSShell() {
         const access = canAccess(co.id);
         if (!access.allowed) { setCompany(co); setScreen("subscription_wall"); return; }
 
-        if (session.token) TenantDB.setToken(session.token);
+        const activeToken = token ?? session.token;
+        if (activeToken) TenantDB.setToken(activeToken);
         TenantDB.load(co.id);
         const tenantState = TenantDB.get();
         (DB as any)._syncFromTenant(tenantState, co.id);
@@ -97,17 +157,18 @@ export function SaaSShell() {
         const restoredUser = session.userId
           ? tenantState.users.find(u => u.id === session.userId) ?? null
           : null;
+        if (activeToken) setAccessToken(activeToken);
         setCompany(co);
         setTenantUser(restoredUser);
+        startRefreshTimer();
         setScreen("erp");
         return;
       }
     }
-
     setScreen("company_login");
   }
 
-  // ── Handlers ───────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────
   const handleSuperAdminCreated = (admin: SuperAdmin) => {
     SaaSDB.setSession({ type: "superadmin", id: admin.id, name: admin.name, email: admin.email });
     setSuperAdmin(admin);
@@ -116,13 +177,17 @@ export function SaaSShell() {
 
   const handleSuperLogin = (admin: SuperAdmin, token?: string) => {
     SaaSDB.setSession({ type: "superadmin", id: admin.id, name: admin.name, email: admin.email, token });
-    if (token) SaaSDB.setAdminToken(token);
+    if (token) { SaaSDB.setAdminToken(token); setAccessToken(token); }
     setSuperAdmin(admin);
+    startRefreshTimer();
     setScreen("super_panel");
   };
 
-  const handleSuperLogout = () => {
+  const handleSuperLogout = async () => {
+    stopRefreshTimer();
+    await callLogoutApi(accessToken);
     SaaSDB.clearSession();
+    setAccessToken(null);
     setSuperAdmin(null);
     setScreen("super_login");
   };
@@ -135,13 +200,9 @@ export function SaaSShell() {
       return;
     }
 
-    // Set token before any sync so server calls are authenticated
     if (token) TenantDB.setToken(token);
 
-    // Load from localStorage first (instant)
     let tenantState = TenantDB.load(co.id);
-
-    // If no local data, pull from server (new device / cleared browser)
     const isEmpty = tenantState.users.length === 0 && tenantState.invoices.length === 0;
     if (isEmpty && token) {
       const serverState = await TenantDB.loadFromServer(co.id);
@@ -152,24 +213,28 @@ export function SaaSShell() {
     setLang((tenantState.settings.lang as Lang) || "ar");
     SaaSDB.setSession({ type: "company", id: co.id, name: co.name, email: co.email, userId: user.id, token });
     SaaSDB.updateUsageStats(co.id, {
-      totalUsers: tenantState.users.length,
-      totalProducts: tenantState.products.length,
+      totalUsers:      tenantState.users.length,
+      totalProducts:   tenantState.products.length,
       totalWarehouses: tenantState.warehouses.length,
-      totalInvoices: tenantState.invoices.length,
+      totalInvoices:   tenantState.invoices.length,
     });
-    setCompany(co);
-    // Re-resolve user from (potentially server-synced) tenantState
+    if (token) setAccessToken(token);
     const resolvedUser = tenantState.users.find(u => u.id === user.id) ?? user;
+    setCompany(co);
     setTenantUser(resolvedUser);
     if (shouldShowRenewalWarning(co.id)) {
       addToast(`⚠️ اشتراكك ينتهي خلال ${getDaysLeft(co.id)} أيام`, "info");
     }
+    startRefreshTimer();
     setScreen("erp");
   };
 
-  const handleCompanyLogout = () => {
+  const handleCompanyLogout = async () => {
+    stopRefreshTimer();
+    await callLogoutApi(accessToken);
     TenantDB.unload();
     SaaSDB.clearSession();
+    setAccessToken(null);
     setCompany(null);
     setTenantUser(null);
     setScreen("company_login");
@@ -184,7 +249,7 @@ export function SaaSShell() {
     }
   };
 
-  // ── Render ──────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <LangContext.Provider value={{ lang, t, dir }}>
       <style>{`html, body { direction: ${dir}; }`}</style>

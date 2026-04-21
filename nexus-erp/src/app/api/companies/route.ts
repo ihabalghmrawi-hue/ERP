@@ -10,7 +10,7 @@ function getDaysFromPlan(planId: PlanId, billingCycle: "monthly" | "yearly", tri
 }
 
 export async function POST(req: NextRequest) {
-  const auth = requireSuperAdmin(req);
+  const auth = await requireSuperAdmin(req);
   if (auth.error) return auth.error;
 
   const body = await req.json();
