@@ -30,7 +30,7 @@ export function Reports() {
   const bs  = AccountingEngine.getBalanceSheet(asOfDate);
   const tb  = AccountingEngine.getTrialBalance(asOfDate);
   const inv = AccountingEngine.getInventoryValuation();
-  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "trial" | "ar" | "ap" | "vat" | "cashflow" | "aged">("sales");
+  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "bs" | "trial" | "ar" | "ap" | "vat" | "cashflow" | "aged">("sales");
   const [searchQuery, setSearchQuery] = useState("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "paid" | "outstanding" | "overdue">("all");
   const [accountTypeFilter, setAccountTypeFilter] = useState<"all" | "asset" | "liability" | "equity" | "revenue" | "expense" | "cogs">("all");
@@ -120,6 +120,7 @@ export function Reports() {
     { id: "sales"     as const, label: t("salesPerformance") },
     { id: "inventory" as const, label: t("inventoryValuation") },
     { id: "pl"        as const, label: t("plSummary") },
+    { id: "bs"        as const, label: "🏛 الميزانية العمومية" },
     { id: "trial"     as const, label: "ميزان المراجعة" },
     { id: "ar"        as const, label: t("accountsReceivable") },
     { id: "ap"        as const, label: t("accountsPayable") },
@@ -978,6 +979,104 @@ export function Reports() {
                   ])}
                 />
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Balance Sheet ── */}
+      {activeReport === "bs" && (() => {
+        const exportCSV = () => {
+          const rows = [
+            ["القسم", "الكود", "الحساب", "الرصيد"],
+            ...bs.assets.map(a => ["أصول", a.code, a.name, a.balance]),
+            ["", "", "إجمالي الأصول", bs.totalAssets],
+            ...bs.liabilities.map(a => ["خصوم", a.code, a.name, a.balance]),
+            ["", "", "إجمالي الخصوم", bs.totalLiabilities],
+            ...bs.equity.map(a => ["حقوق ملكية", a.code, a.name, a.balance]),
+            ["", "", "إجمالي حقوق الملكية", bs.totalEquity],
+            ["", "", "الخصوم + حقوق الملكية", bs.totalLiabilities + bs.totalEquity],
+          ];
+          const csv  = rows.map(r => r.join(",")).join("\n");
+          const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a"); a.href = url;
+          a.download = `balance-sheet-${asOfDate || "all"}.csv`; a.click(); URL.revokeObjectURL(url);
+        };
+
+        const AccountSection = ({ title, accounts, total, color }: { title: string; accounts: typeof bs.assets; total: number; color: string }) => (
+          <div style={S.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color }}>{title}</div>
+            </div>
+            {accounts.length === 0 ? (
+              <div style={{ color: C.textMuted, fontSize: 12, textAlign: "center", padding: 16 }}>لا توجد حسابات</div>
+            ) : (
+              <>
+                {["current_asset","fixed_asset","current_liability","long_term_liability","equity","asset","liability","asset_group","liability_group"].map(cat => {
+                  const items = accounts.filter(a => a.category === cat);
+                  if (!items.length) return null;
+                  const catLabel: Record<string, string> = {
+                    current_asset: "أصول متداولة", fixed_asset: "أصول ثابتة",
+                    current_liability: "خصوم متداولة", long_term_liability: "خصوم طويلة الأجل",
+                    equity: "حقوق الملكية", asset: "أصول", liability: "خصوم",
+                    asset_group: "مجموعة الأصول", liability_group: "مجموعة الخصوم",
+                  };
+                  return (
+                    <div key={cat} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, padding: "4px 0", borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+                        {catLabel[cat] || cat}
+                      </div>
+                      {items.map(a => (
+                        <div key={a.id} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", fontSize: 12, borderRadius: 4 }}>
+                          <span style={{ color, fontWeight: (a.balance || 0) !== 0 ? 700 : 400 }}>{fmt(a.balance || 0)}</span>
+                          <span style={{ color: C.textSec }}><span style={{ color: C.textMuted, fontSize: 10, marginLeft: 6 }}>{a.code}</span> {a.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 8px", borderTop: `2px solid ${C.borderDark}`, fontWeight: 800, marginTop: 4 }}>
+                  <span style={{ color, fontSize: 14 }}>{fmt(total)}</span>
+                  <span style={{ color: C.text }}>الإجمالي</span>
+                </div>
+              </>
+            )}
+          </div>
+        );
+
+        return (
+          <div>
+            {/* Header */}
+            <div style={{ ...S.card, marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ ...S.kpiCard(bs.isBalanced ? C.success : C.danger), padding: "10px 16px", minWidth: 160 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted }}>الأصول</div>
+                    <div style={{ fontWeight: 800, color: C.success, fontSize: 16 }}>{fmt(bs.totalAssets)}</div>
+                  </div>
+                  <div style={{ ...S.kpiCard(C.danger), padding: "10px 16px", minWidth: 160 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted }}>الخصوم + حقوق الملكية</div>
+                    <div style={{ fontWeight: 800, color: C.danger, fontSize: 16 }}>{fmt(bs.totalLiabilities + bs.totalEquity)}</div>
+                  </div>
+                  <div style={{ ...S.kpiCard(bs.isBalanced ? C.success : C.danger), padding: "10px 16px", minWidth: 140 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted }}>الميزانية</div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: bs.isBalanced ? C.success : C.danger }}>
+                      {bs.isBalanced ? "✓ متوازنة" : "✗ غير متوازنة"}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <button style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }} onClick={exportCSV}>⬇️ CSV</button>
+                  <div style={{ fontSize: 11, color: C.textMuted }}>حتى: {asOfDate || "اليوم"}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={S.grid(3)}>
+              <AccountSection title="الأصول" accounts={bs.assets} total={bs.totalAssets} color={C.success} />
+              <AccountSection title="الخصوم" accounts={bs.liabilities} total={bs.totalLiabilities} color={C.danger} />
+              <AccountSection title="حقوق الملكية" accounts={bs.equity} total={bs.totalEquity} color={C.purple} />
             </div>
           </div>
         );
