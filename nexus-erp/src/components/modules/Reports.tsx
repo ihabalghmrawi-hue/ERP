@@ -30,7 +30,7 @@ export function Reports() {
   const bs  = AccountingEngine.getBalanceSheet(asOfDate);
   const tb  = AccountingEngine.getTrialBalance(asOfDate);
   const inv = AccountingEngine.getInventoryValuation();
-  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "trial" | "ar" | "ap" | "vat">("sales");
+  const [activeReport, setActiveReport] = useState<"sales" | "inventory" | "pl" | "trial" | "ar" | "ap" | "vat" | "cashflow" | "aged">("sales");
   const [searchQuery, setSearchQuery] = useState("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "paid" | "outstanding" | "overdue">("all");
   const [accountTypeFilter, setAccountTypeFilter] = useState<"all" | "asset" | "liability" | "equity" | "revenue" | "expense" | "cogs">("all");
@@ -84,7 +84,7 @@ export function Reports() {
       setStartDate(saved.startDate);
       setEndDate(saved.endDate);
       setAsOfDate(saved.asOfDate || new Date().toISOString().slice(0, 10));
-      setActiveReport(saved.activeReport || "sales");
+      setActiveReport(saved.activeReport || "sales" as any);
       setSearchQuery(saved.searchQuery || "");
       setInvoiceStatusFilter(saved.invoiceStatusFilter || "all");
       setAccountTypeFilter(saved.accountTypeFilter || "all");
@@ -124,6 +124,8 @@ export function Reports() {
     { id: "ar"        as const, label: t("accountsReceivable") },
     { id: "ap"        as const, label: t("accountsPayable") },
     { id: "vat"       as const, label: "⚖️ تقرير الضريبة (VAT)" },
+    { id: "cashflow"  as const, label: "💵 التدفق النقدي" },
+    { id: "aged"      as const, label: "📅 تقادم الذمم" },
   ];
 
   return (
@@ -253,7 +255,7 @@ export function Reports() {
       {activeReport === "sales" && (
         <div style={S.card}>
           <div style={S.sectionHeader}>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: 13, color: C.success, fontWeight: 700 }}>
                 {t("amountPaid")}: {fmt(filteredInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.total, 0))}
               </span>
@@ -263,6 +265,20 @@ export function Reports() {
               <span style={{ fontSize: 13, color: C.textMuted, fontWeight: 700 }}>
                 {filteredInvoices.length} {t("invoices") || "Invoices"}
               </span>
+              <button
+                style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }}
+                onClick={() => {
+                  const rows = [
+                    ["رقم الفاتورة","التاريخ","تاريخ الاستحقاق","العميل","النوع","الحالة","المجموع","الضريبة","الصافي"],
+                    ...filteredInvoices.map(i => [i.id, i.date, i.dueDate, i.customerName, i.paymentType, i.status, i.total, i.taxAmount, i.subtotal]),
+                  ];
+                  const csv  = rows.map(r => r.join(",")).join("\n");
+                  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a"); a.href = url;
+                  a.download = `sales-${startDate || "all"}.csv`; a.click(); URL.revokeObjectURL(url);
+                }}
+              >⬇️ CSV</button>
             </div>
             <div style={S.sectionTitle}>{t("salesPerformance")}</div>
           </div>
@@ -331,7 +347,29 @@ export function Reports() {
       {activeReport === "pl" && (
         <div style={{ ...S.grid(2) }}>
           <div style={S.card}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 16 }}>{t("incomeStatement")}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{t("incomeStatement")}</div>
+              <button
+                style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }}
+                onClick={() => {
+                  const rows = [
+                    ["البند", "المبلغ"],
+                    ["الإيرادات", is.revenue],
+                    ["المردودات والمسموحات", -is.contraRevenue],
+                    ["صافي الإيرادات", is.netRevenue],
+                    ["تكلفة البضاعة المباعة", -is.cogs],
+                    ["إجمالي الربح", is.grossProfit],
+                    ["المصروفات التشغيلية", -is.expenses],
+                    ["صافي الدخل", is.netIncome],
+                  ];
+                  const csv  = rows.map(r => r.join(",")).join("\n");
+                  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a"); a.href = url;
+                  a.download = `pl-${startDate || "all"}.csv`; a.click(); URL.revokeObjectURL(url);
+                }}
+              >⬇️ CSV</button>
+            </div>
           {prevIs && (
             <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
               <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, minWidth: 180 }}>
@@ -386,7 +424,7 @@ export function Reports() {
         </div>
       )}
 
-      {/* ── AR Report ── */}
+      {/* ── Trial Balance ── */}
       {activeReport === "trial" && (
         <div style={S.card}>
           <div style={S.sectionHeader}>
@@ -394,9 +432,22 @@ export function Reports() {
               <div style={{ fontWeight: 800, fontSize: 14 }}>{"ميزان المراجعة"}</div>
               <div style={{ fontSize: 13, color: C.textMuted }}>عرض الحسابات حسب الرصيد والتصنيف</div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13, color: C.textMuted }}><strong>حتى:</strong> {asOfDate || "—"}</div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>{tb.accounts.length} حسابات</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }}
+                onClick={() => {
+                  const rows = [["الكود","الحساب","النوع","مدين","دائن"], ...tb.accounts.map(a => [a.code, a.name, a.type, a.debit, a.credit])];
+                  const csv  = rows.map(r => r.join(",")).join("\n");
+                  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a"); a.href = url;
+                  a.download = `trial-balance-${asOfDate || "all"}.csv`; a.click(); URL.revokeObjectURL(url);
+                }}
+              >⬇️ CSV</button>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 13, color: C.textMuted }}><strong>حتى:</strong> {asOfDate || "—"}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{tb.accounts.length} حسابات</div>
+              </div>
             </div>
           </div>
           {tb.accounts.length === 0 ? (
@@ -686,6 +737,248 @@ export function Reports() {
                 <div style={{ fontSize: 12, marginTop: 8 }}>فعّل ضريبة القيمة المضافة من الإعدادات ثم أنشئ فواتير جديدة</div>
               </div>
             )}
+          </div>
+        );
+      })()}
+
+      {/* ── Cash Flow Statement ── */}
+      {activeReport === "cashflow" && (() => {
+        const today = new Date().toISOString().slice(0, 10);
+        const from  = startDate || db.invoices.concat(db.purchaseOrders as any[]).map((d: any) => d.date).sort()[0] || today;
+        const to    = endDate   || today;
+
+        // Operating: receipts from customers (paid invoices), payments to suppliers (received POs)
+        const paidInvoices = db.invoices.filter(i =>
+          i.status === "paid" && i.date >= from && i.date <= to
+        );
+        const receivedPOs  = db.purchaseOrders.filter(p =>
+          p.status === "received" && p.date >= from && p.date <= to
+        );
+        const cashReceipts  = paidInvoices.reduce((s, i) => s + i.total, 0);
+        const cashPayments  = receivedPOs.reduce((s, p) => s + p.amountPaid, 0);
+        const netOperating  = cashReceipts - cashPayments;
+
+        // Financing / other: treasury transactions in period
+        const txInPeriod    = db.treasury.filter(tx => tx.date >= from && tx.date <= to);
+        const receiptsOther = txInPeriod.filter(tx => tx.type === "receipt").reduce((s, tx) => s + tx.amount, 0);
+        const paymentsOther = txInPeriod.filter(tx => tx.type === "payment").reduce((s, tx) => s + tx.amount, 0);
+        const netFinancing  = receiptsOther - paymentsOther;
+
+        const netCashFlow   = netOperating + netFinancing;
+
+        const exportCSV = () => {
+          const rows = [
+            ["البند","المبلغ"],
+            ["أنشطة التشغيل",""],
+            ["تحصيلات من العملاء", cashReceipts],
+            ["مدفوعات للموردين", -cashPayments],
+            ["صافي التدفق التشغيلي", netOperating],
+            ["أنشطة التمويل",""],
+            ["إيصالات خزينة أخرى", receiptsOther],
+            ["مدفوعات خزينة أخرى", -paymentsOther],
+            ["صافي التدفق التمويلي", netFinancing],
+            ["صافي التدفق النقدي", netCashFlow],
+          ];
+          const csv  = rows.map(r => r.join(",")).join("\n");
+          const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a"); a.href = url;
+          a.download = `cashflow-${from}-${to}.csv`; a.click(); URL.revokeObjectURL(url);
+        };
+
+        const row = (label: string, value: number, bold = false, color?: string) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: bold ? 13 : 12 }}>
+            <span style={{ color: color || (value >= 0 ? C.success : C.danger), fontWeight: bold ? 800 : 400 }}>{fmt(value)}</span>
+            <span style={{ color: bold ? C.text : C.textSec, fontWeight: bold ? 700 : 400 }}>{label}</span>
+          </div>
+        );
+
+        const sectionHead = (label: string) => (
+          <div key={label} style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, padding: "10px 0 4px", borderBottom: `2px solid ${C.border}`, marginTop: 8 }}>{label}</div>
+        );
+
+        return (
+          <div style={S.grid(2)}>
+            <div style={S.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>💵 قائمة التدفق النقدي</div>
+                <button style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }} onClick={exportCSV}>⬇️ CSV</button>
+              </div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>الفترة: {from} — {to}</div>
+
+              {sectionHead("أنشطة التشغيل (Operating)")}
+              {row("تحصيلات من العملاء (فواتير مدفوعة)", cashReceipts)}
+              {row("مدفوعات للموردين (أوامر مستلمة)", -cashPayments)}
+              {row("صافي التدفق التشغيلي", netOperating, true)}
+
+              {sectionHead("أنشطة التمويل (Financing)")}
+              {row("إيصالات خزينة أخرى", receiptsOther)}
+              {row("مدفوعات خزينة أخرى", -paymentsOther)}
+              {row("صافي التدفق التمويلي", netFinancing, true)}
+
+              <div style={{ marginTop: 16, padding: "14px 0", borderTop: `2px solid ${C.borderDark}`, display: "flex", justifyContent: "space-between", fontWeight: 800 }}>
+                <span style={{ fontSize: 16, color: netCashFlow >= 0 ? C.success : C.danger }}>{fmt(netCashFlow)}</span>
+                <span style={{ color: C.text }}>صافي التدفق النقدي</span>
+              </div>
+            </div>
+
+            <div style={S.card}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 16 }}>📋 تفاصيل حركات الخزينة</div>
+              {txInPeriod.length === 0 ? (
+                <div style={{ textAlign: "center", color: C.textMuted, padding: 32 }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+                  <div>لا توجد حركات خزينة في هذه الفترة</div>
+                </div>
+              ) : (
+                <DataTable
+                  headers={[{ label: "المبلغ" }, { label: "النوع" }, { label: "الوصف" }, { label: "التاريخ" }]}
+                  rows={txInPeriod.slice().sort((a, b) => b.date.localeCompare(a.date)).map(tx => [
+                    <span key="amt" style={{ fontWeight: 700, color: tx.type === "receipt" ? C.success : C.danger }}>{fmt(tx.amount)}</span>,
+                    <span key="type" style={S.badge(tx.type === "receipt" ? "success" : tx.type === "payment" ? "danger" : "info")}>
+                      {tx.type === "receipt" ? "إيصال" : tx.type === "payment" ? "دفع" : "تحويل"}
+                    </span>,
+                    <span key="desc" style={{ fontSize: 12, color: C.textSec }}>{tx.description}</span>,
+                    fmtDate(tx.date),
+                  ])}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Aged AR/AP ── */}
+      {activeReport === "aged" && (() => {
+        const today    = new Date();
+        const daysDiff = (dateStr: string) => {
+          const d = new Date(dateStr);
+          return Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+        };
+        const bucket = (days: number): "current" | "30" | "60" | "90" | "120+" => {
+          if (days <= 0)   return "current";
+          if (days <= 30)  return "30";
+          if (days <= 60)  return "60";
+          if (days <= 90)  return "90";
+          return "120+";
+        };
+        const BUCKETS = ["current","30","60","90","120+"] as const;
+        const BUCKET_LABELS: Record<string, string> = {
+          current: "جارٍ (غير مستحق)", "30": "1-30 يوم", "60": "31-60 يوم", "90": "61-90 يوم", "120+": "91+ يوم",
+        };
+        const BUCKET_COLORS: Record<string, string> = {
+          current: C.success, "30": C.accentMid, "60": C.warning, "90": C.danger, "120+": "#7B2D00",
+        };
+
+        // Outstanding invoices
+        const outstanding = db.invoices.filter(i => i.status !== "paid" && (i.amountDue ?? i.total) > 0);
+        type AgedRow = { id: string; name: string; amount: number; dueDate: string; days: number; bucket: string };
+        const arRows: AgedRow[] = outstanding.map(i => ({
+          id: i.id, name: i.customerName, amount: i.amountDue ?? i.total,
+          dueDate: i.dueDate, days: daysDiff(i.dueDate), bucket: bucket(daysDiff(i.dueDate)),
+        }));
+
+        // Outstanding POs (unpaid)
+        const outstandingPOs = db.purchaseOrders.filter(p => p.amountDue > 0);
+        const apRows: AgedRow[] = outstandingPOs.map(p => ({
+          id: p.id, name: p.supplierName, amount: p.amountDue,
+          dueDate: p.date, days: daysDiff(p.date), bucket: bucket(daysDiff(p.date)),
+        }));
+
+        const bucketTotals = (rows: AgedRow[]) =>
+          BUCKETS.reduce((acc, b) => {
+            acc[b] = rows.filter(r => r.bucket === b).reduce((s, r) => s + r.amount, 0);
+            return acc;
+          }, {} as Record<string, number>);
+
+        const arTotals  = bucketTotals(arRows);
+        const apTotals  = bucketTotals(apRows);
+        const arGrand   = arRows.reduce((s, r) => s + r.amount, 0);
+        const apGrand   = apRows.reduce((s, r) => s + r.amount, 0);
+
+        const exportCSV = (rows: AgedRow[], type: string) => {
+          const csv = [
+            ["المعرف","الاسم","تاريخ الاستحقاق","الأيام","المتأخر","المبلغ"],
+            ...rows.map(r => [r.id, r.name, r.dueDate, r.days, BUCKET_LABELS[r.bucket], r.amount]),
+          ].map(r => r.join(",")).join("\n");
+          const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a"); a.href = url;
+          a.download = `aged-${type}.csv`; a.click(); URL.revokeObjectURL(url);
+        };
+
+        const SummaryBar = ({ totals, grand }: { totals: Record<string, number>; grand: number }) => (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            {BUCKETS.map(b => (
+              <div key={b} style={{ flex: 1, minWidth: 100, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", borderTop: `3px solid ${BUCKET_COLORS[b]}` }}>
+                <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>{BUCKET_LABELS[b]}</div>
+                <div style={{ fontWeight: 800, color: BUCKET_COLORS[b], fontSize: 14 }}>{fmt(totals[b] ?? 0)}</div>
+                <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                  {grand > 0 ? `${((totals[b] ?? 0) / grand * 100).toFixed(1)}%` : "—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+        return (
+          <div>
+            {/* AR Section */}
+            <div style={{ ...S.card, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>📅 تقادم الذمم المدينة (AR)</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>إجمالي المستحق: <strong style={{ color: C.warning }}>{fmt(arGrand)}</strong></div>
+                </div>
+                <button style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }} onClick={() => exportCSV(arRows, "ar")}>⬇️ CSV</button>
+              </div>
+              <SummaryBar totals={arTotals} grand={arGrand} />
+              {arRows.length === 0 ? (
+                <div style={{ textAlign: "center", color: C.textMuted, padding: 24 }}>لا توجد فواتير مستحقة</div>
+              ) : (
+                <DataTable
+                  headers={[{ label: "الشريحة" }, { label: "الأيام" }, { label: "المبلغ المستحق" }, { label: "تاريخ الاستحقاق" }, { label: "العميل" }, { label: "رقم الفاتورة" }]}
+                  rows={arRows.sort((a, b) => b.days - a.days).map(r => [
+                    <span key="b" style={{ ...S.badge("info"), background: BUCKET_COLORS[r.bucket] + "22", color: BUCKET_COLORS[r.bucket], border: `1px solid ${BUCKET_COLORS[r.bucket]}40` }}>
+                      {BUCKET_LABELS[r.bucket]}
+                    </span>,
+                    <span key="d" style={{ color: r.days > 60 ? C.danger : r.days > 30 ? C.warning : C.textSec }}>{r.days}d</span>,
+                    <span key="amt" style={{ fontWeight: 800, color: r.days > 60 ? C.danger : C.text }}>{fmt(r.amount)}</span>,
+                    fmtDate(r.dueDate),
+                    <span key="name" style={{ fontWeight: 700 }}>{r.name}</span>,
+                    <span key="id" style={{ color: C.accent }}>{r.id}</span>,
+                  ])}
+                />
+              )}
+            </div>
+
+            {/* AP Section */}
+            <div style={S.card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>📅 تقادم الذمم الدائنة (AP)</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>إجمالي المستحق: <strong style={{ color: C.danger }}>{fmt(apGrand)}</strong></div>
+                </div>
+                <button style={{ ...S.btn("outline"), fontSize: 11, padding: "5px 10px" }} onClick={() => exportCSV(apRows, "ap")}>⬇️ CSV</button>
+              </div>
+              <SummaryBar totals={apTotals} grand={apGrand} />
+              {apRows.length === 0 ? (
+                <div style={{ textAlign: "center", color: C.textMuted, padding: 24 }}>لا توجد أوامر شراء مستحقة</div>
+              ) : (
+                <DataTable
+                  headers={[{ label: "الشريحة" }, { label: "الأيام" }, { label: "المبلغ المستحق" }, { label: "تاريخ الأمر" }, { label: "المورد" }, { label: "رقم الأمر" }]}
+                  rows={apRows.sort((a, b) => b.days - a.days).map(r => [
+                    <span key="b" style={{ ...S.badge("info"), background: BUCKET_COLORS[r.bucket] + "22", color: BUCKET_COLORS[r.bucket], border: `1px solid ${BUCKET_COLORS[r.bucket]}40` }}>
+                      {BUCKET_LABELS[r.bucket]}
+                    </span>,
+                    <span key="d" style={{ color: r.days > 60 ? C.danger : r.days > 30 ? C.warning : C.textSec }}>{r.days}d</span>,
+                    <span key="amt" style={{ fontWeight: 800, color: r.days > 60 ? C.danger : C.text }}>{fmt(r.amount)}</span>,
+                    fmtDate(r.dueDate),
+                    <span key="name" style={{ fontWeight: 700 }}>{r.name}</span>,
+                    <span key="id" style={{ color: C.accent }}>{r.id}</span>,
+                  ])}
+                />
+              )}
+            </div>
           </div>
         );
       })()}

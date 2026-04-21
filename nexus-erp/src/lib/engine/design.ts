@@ -164,6 +164,11 @@ export const S = {
     boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
   }),
 
+  kpiIcon: {
+    fontSize: 22,
+    marginBottom: 6,
+  } as CSSProperties,
+
   kpiLabel: {
     fontSize: 11,
     color: C.textMuted,
