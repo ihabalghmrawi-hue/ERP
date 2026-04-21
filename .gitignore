@@ -1,0 +1,6 @@
+# Claude Code local settings (machine-specific, never commit)
+.claude/settings.local.json
+
+# Common artifacts
+*.zip
+*.tar.gz

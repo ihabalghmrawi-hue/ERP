@@ -1,15 +1,24 @@
-name: Deploy to Vercel
+name: CI – Build Check
+
+# Vercel Git integration handles all deployments automatically:
+#   main branch  → production deployment
+#   dev branch   → preview deployment
+#   pull requests → preview deployment
+#
+# This workflow only validates that the build succeeds before merging.
 
 on:
   push:
     branches:
       - main
+      - dev
   pull_request:
     branches:
       - main
 
 jobs:
-  deploy:
+  build:
+    name: Build & Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -28,16 +37,12 @@ jobs:
           cd nexus-erp
           npm ci
 
+      - name: Type check
+        run: |
+          cd nexus-erp
+          npx tsc --noEmit
+
       - name: Build
         run: |
           cd nexus-erp
           npm run build
-
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./nexus-erp
-          vercel-args: '--prod'
