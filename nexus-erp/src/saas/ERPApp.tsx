@@ -8,7 +8,7 @@ import { getDaysLeft, shouldShowRenewalWarning } from "./accessGuard";
 import { Lang } from "@/lib/i18n/translations";
 import { createTranslator, LangContext } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
-import { S, C } from "@/lib/engine/design";
+import { S, C, GLOBAL_CSS } from "@/lib/engine/design";
 import { PAGE_PERMISSION } from "@/lib/engine/permissions";
 
 import { Sidebar }    from "@/components/layout/Sidebar";
@@ -115,6 +115,7 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
 
   return (
     <LangContext.Provider value={{ lang, t, dir }}>
+      <style>{GLOBAL_CSS + `\nhtml, body { direction: ${dir}; }`}</style>
       <div style={{ ...S.app, direction: dir, flexDirection: "column" }}>
         {/* ── Subscription Warning Banner ── */}
         {showWarning && (
