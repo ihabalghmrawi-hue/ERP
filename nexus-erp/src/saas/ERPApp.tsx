@@ -25,12 +25,13 @@ import { Reports }    from "@/components/modules/Reports";
 import { Users }      from "@/components/modules/Users";
 import { Settings }   from "@/components/modules/Settings";
 import { POS }        from "@/components/modules/POS";
-import AuditLog from "@/components/modules/AuditLog";
+import AuditLog       from "@/components/modules/AuditLog";
+import { Reconciliation } from "@/components/modules/Reconciliation";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos" | "audit_log";
+  | "pos" | "audit_log" | "reconciliation";
 
 interface Props {
   company: Company;
@@ -87,6 +88,7 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
     inventory: t("inventory"), treasury: t("treasury"), customers: t("customers"),
     suppliers: t("suppliers"), accounting: t("accounting"), reports: t("reports"),
     users: t("users"), settings: t("settings"), pos: "نقطة البيع", audit_log: "سجل التدقيق",
+    reconciliation: "تسوية البنك",
   };
 
   const renderPage = () => {
@@ -106,7 +108,8 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
       case "users":      return <Users      addToast={addToast} />;
       case "settings":   return <Settings   lang={lang} setLang={setLang} />;
       case "pos":        return <POS        addToast={addToast} />;
-      case "audit_log":  return <AuditLog />;
+      case "audit_log":      return <AuditLog />;
+      case "reconciliation": return <Reconciliation />;
     }
   };
 

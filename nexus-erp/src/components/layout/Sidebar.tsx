@@ -8,7 +8,7 @@ import { DB } from "@/lib/db/database";
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos" | "audit_log";
+  | "pos" | "audit_log" | "reconciliation";
 
 interface SidebarProps {
   page: PageId;
@@ -55,8 +55,9 @@ export function Sidebar({ page, onNavigate }: SidebarProps) {
     {
       section: t("finance"),
       items: [
-        { id: "accounting" as PageId, label: t("accounting"), icon: "📊", perm: "view_accounting" },
-        { id: "reports"    as PageId, label: t("reports"),    icon: "📈", perm: "view_reports"    },
+        { id: "accounting"     as PageId, label: t("accounting"),  icon: "📊", perm: "view_accounting"  },
+        { id: "reports"        as PageId, label: t("reports"),     icon: "📈", perm: "view_reports"     },
+        { id: "reconciliation" as PageId, label: "تسوية البنك",   icon: "🏦", perm: "manage_treasury"  },
       ],
     },
     {

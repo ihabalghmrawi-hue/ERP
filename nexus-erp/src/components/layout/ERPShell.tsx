@@ -26,11 +26,13 @@ import { Reports }    from "@/components/modules/Reports";
 import { Users }      from "@/components/modules/Users";
 import { Settings }   from "@/components/modules/Settings";
 import { POS }        from "@/components/modules/POS";
-import { AuditLog }  from "@/components/modules/AuditLog";
+import { AuditLog }       from "@/components/modules/AuditLog";
+import { Reconciliation } from "@/components/modules/Reconciliation";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
-  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos" | "audit_log";
+  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos" | "audit_log"
+  | "reconciliation";
 
 export function ERPShell() {
   const [lang, setLang]       = useState<Lang>(() => (DB.get().settings.lang as Lang) || "ar");
@@ -58,6 +60,7 @@ export function ERPShell() {
     inventory: t("inventory"), treasury: t("treasury"), customers: t("customers"),
     suppliers: t("suppliers"), accounting: t("accounting"), reports: t("reports"),
     users: t("users"), settings: t("settings"), pos: "POS", audit_log: "سجل التدقيق",
+    reconciliation: "تسوية البنك",
   };
 
   /* ── Page content map ─────────────── */
@@ -74,7 +77,8 @@ export function ERPShell() {
     users:      <Users      addToast={addToast} />,
     settings:   <Settings   lang={lang} setLang={handleSetLang} />,
     pos:        <POS        addToast={addToast} />,
-    audit_log:  <AuditLog />,
+    audit_log:      <AuditLog />,
+    reconciliation: <Reconciliation />,
   };
 
   return (

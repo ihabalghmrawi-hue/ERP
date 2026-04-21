@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { DB } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
 import { logActivity } from "@/lib/engine/helpers";
 import { useAuth } from "@/hooks/useAuth";
+import { SaaSDB } from "@/saas/saasDB";
 
 const ARAB_COUNTRIES = [
   { code: "SA", name: "المملكة العربية السعودية", nameEn: "Saudi Arabia" },
@@ -392,6 +393,9 @@ export function Settings({ lang, setLang }: Props) {
         </button>
       </div>
 
+      {/* Active Sessions */}
+      <ActiveSessionsPanel token={SaaSDB.getSession()?.token} currentRole={user?.role} />
+
       {/* Danger zone */}
       <div style={{ ...S.card, border: `1px solid ${C.danger}30` }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: C.danger, marginBottom: 12 }}>
@@ -469,6 +473,125 @@ function PeriodLockManager({
               >×</button>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SessionRow {
+  jti: string;
+  user_id: string;
+  email: string;
+  company_id: string | null;
+  issued_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  ip_address: string | null;
+}
+
+function ActiveSessionsPanel({ token, currentRole }: { token?: string; currentRole?: string }) {
+  const [sessions, setSessions]   = useState<SessionRow[]>([]);
+  const [loading, setLoading]     = useState(false);
+  const [revoking, setRevoking]   = useState<string | null>(null);
+  const [expanded, setExpanded]   = useState(false);
+
+  const canManage = currentRole === "admin" || currentRole === "superadmin";
+
+  async function load() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/sessions", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const { sessions: data } = await res.json();
+        setSessions(data ?? []);
+      }
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { if (expanded) load(); }, [expanded]);
+
+  async function revoke(jti: string) {
+    if (!token || !window.confirm("هل تريد إنهاء هذه الجلسة؟")) return;
+    setRevoking(jti);
+    try {
+      await fetch("/api/auth/sessions", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ jti }),
+      });
+      setSessions((s) => s.filter((x) => x.jti !== jti));
+    } catch {}
+    setRevoking(null);
+  }
+
+  function shortUA(ua: string | null) {
+    if (!ua) return "غير معروف";
+    if (ua.includes("Mobile")) return "📱 موبايل";
+    if (ua.includes("Chrome"))  return "🌐 Chrome";
+    if (ua.includes("Firefox")) return "🦊 Firefox";
+    if (ua.includes("Safari"))  return "🧭 Safari";
+    return "💻 متصفح";
+  }
+
+  return (
+    <div style={{ ...S.card }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+          🔐 الجلسات النشطة {sessions.length > 0 && `(${sessions.length})`}
+        </div>
+        <span style={{ color: C.textMuted, fontSize: 13 }}>{expanded ? "▲ إخفاء" : "▼ عرض"}</span>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 16 }}>
+          {loading ? (
+            <div style={{ color: C.textMuted, fontSize: 13 }}>جارٍ التحميل...</div>
+          ) : sessions.length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: 13 }}>لا توجد جلسات نشطة مسجلة</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {sessions.map((s) => (
+                <div key={s.jti} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "10px 14px", borderRadius: 8,
+                  background: "#F8F8F6", border: `1px solid ${C.border}`,
+                  fontSize: 13,
+                }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <div style={{ fontWeight: 600 }}>{s.email}</div>
+                    <div style={{ color: C.textMuted, fontSize: 12, display: "flex", gap: 12 }}>
+                      <span>{shortUA(s.user_agent)}</span>
+                      {s.ip_address && <span>IP: {s.ip_address}</span>}
+                      <span>منذ: {new Date(s.issued_at).toLocaleString("ar-SA")}</span>
+                    </div>
+                  </div>
+                  {canManage && (
+                    <button
+                      style={{ ...S.btn("danger"), padding: "4px 12px", fontSize: 12, border: "none", opacity: revoking === s.jti ? 0.5 : 1 }}
+                      disabled={revoking === s.jti}
+                      onClick={() => revoke(s.jti)}
+                    >
+                      إنهاء
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            style={{ ...S.btn("outline"), marginTop: 12, fontSize: 12, padding: "5px 14px" }}
+            onClick={load}
+          >
+            ↻ تحديث
+          </button>
         </div>
       )}
     </div>

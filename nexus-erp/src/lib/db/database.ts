@@ -202,6 +202,34 @@ export interface InventoryMovement {
   createdBy?: string;
 }
 
+export interface BankStatementLine {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;          // positive = credit/deposit, negative = debit/withdrawal
+  balance?: number;        // running balance from bank
+  reference?: string;
+  matchedTransactionId?: string; // linked TreasuryTransaction.id when reconciled
+  status: "unmatched" | "matched" | "ignored";
+}
+
+export interface BankStatement {
+  id: string;
+  accountId: string;       // links to Account (bank account)
+  accountName: string;
+  bankName: string;
+  statementDate: string;   // end date of statement period
+  fromDate: string;
+  toDate: string;
+  openingBalance: number;
+  closingBalance: number;
+  lines: BankStatementLine[];
+  status: "draft" | "in_progress" | "reconciled";
+  createdBy: string;
+  createdAt: string;
+  reconciledAt?: string;
+}
+
 export interface AppSettings {
   companyName: string;
   taxNumber: string;
@@ -246,8 +274,9 @@ export interface DatabaseState {
   inventoryMovements: InventoryMovement[];
   activityLog: ActivityLog[];
   emailLog: EmailLog[];
+  bankStatements: BankStatement[];
   settings: AppSettings;
-  counters: { je: number; inv: number; po: number; tx: number };
+  counters: { je: number; inv: number; po: number; tx: number; bs: number };
 }
 
 // ─── Default Chart of Accounts ─────────────────────────────────
@@ -292,6 +321,7 @@ export function createInitialDatabaseState(): DatabaseState {
     inventoryMovements: [],
     activityLog: [],
     emailLog: [],
+    bankStatements: [],
     settings: {
       companyName: "",
       taxNumber: "",
@@ -307,7 +337,7 @@ export function createInitialDatabaseState(): DatabaseState {
       lockedPeriods: [],
       requireInvoiceApproval: false,
     },
-    counters: { je: 1, inv: 1, po: 1, tx: 1 },
+    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1 },
   };
 }
 
