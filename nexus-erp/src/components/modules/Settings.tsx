@@ -342,6 +342,56 @@ export function Settings({ lang, setLang }: Props) {
         </div>
       </div>
 
+      {/* ── Accounting Controls ────────────────────────── */}
+      <div style={S.card}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginBottom: 20 }}>
+          ضوابط المحاسبة
+        </div>
+
+        {/* Invoice Approval Toggle */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>اعتماد الفواتير الآجلة</div>
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+              عند التفعيل، تحتاج الفواتير الآجلة (credit) لموافقة مدير قبل تسجيلها محاسبياً
+            </div>
+          </div>
+          <div
+            onClick={() => setForm({ ...form, requireInvoiceApproval: !(form as any).requireInvoiceApproval })}
+            style={{
+              width: 48, height: 26, borderRadius: 13, cursor: "pointer",
+              background: (form as any).requireInvoiceApproval ? C.success : C.border,
+              position: "relative", transition: "background 0.2s", flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: 20, height: 20, borderRadius: "50%", background: "#fff",
+              position: "absolute", top: 3,
+              right: (form as any).requireInvoiceApproval ? 3 : 25,
+              transition: "right 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            }} />
+          </div>
+        </div>
+
+        {/* Locked Periods */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            قفل الفترات المحاسبية
+          </div>
+          <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+            الفترات المقفلة لا يمكن إضافة أو تعديل قيود أو فواتير فيها. الصيغة: YYYY-MM
+          </div>
+          <PeriodLockManager
+            lockedPeriods={(form as any).lockedPeriods ?? []}
+            onChange={(periods) => setForm({ ...form, lockedPeriods: periods } as any)}
+          />
+        </div>
+
+        <button style={{ ...S.btn("primary"), padding: "10px 28px", border: "none", marginTop: 20 }} onClick={handleSave}>
+          {saved ? "تم الحفظ ✓" : "حفظ ضوابط المحاسبة"}
+        </button>
+      </div>
+
       {/* Danger zone */}
       <div style={{ ...S.card, border: `1px solid ${C.danger}30` }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: C.danger, marginBottom: 12 }}>
@@ -362,6 +412,65 @@ export function Settings({ lang, setLang }: Props) {
           🗑 إعادة تعيين النظام
         </button>
       </div>
+    </div>
+  );
+}
+
+function PeriodLockManager({
+  lockedPeriods,
+  onChange,
+}: {
+  lockedPeriods: string[];
+  onChange: (periods: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const addPeriod = () => {
+    const p = input.trim();
+    if (!/^\d{4}-\d{2}$/.test(p)) return;
+    if (lockedPeriods.includes(p)) { setInput(""); return; }
+    onChange([...lockedPeriods, p].sort());
+    setInput("");
+  };
+
+  const removePeriod = (p: string) => onChange(lockedPeriods.filter((x) => x !== p));
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          style={{ ...S.input, width: 140, direction: "ltr", textAlign: "center" }}
+          placeholder="2024-01"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addPeriod()}
+        />
+        <button
+          style={{ ...S.btn("outline"), padding: "6px 16px", fontSize: 13 }}
+          onClick={addPeriod}
+        >
+          + قفل
+        </button>
+      </div>
+      {lockedPeriods.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.textMuted }}>لا توجد فترات مقفلة حالياً</div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {lockedPeriods.map((p) => (
+            <div key={p} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "#FEF2F2", border: `1px solid ${C.danger}40`,
+              borderRadius: 6, padding: "4px 10px", fontSize: 13,
+            }}>
+              <span style={{ color: C.danger, fontWeight: 700, direction: "ltr" }}>🔒 {p}</span>
+              <button
+                onClick={() => removePeriod(p)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 14, lineHeight: 1, padding: 0 }}
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

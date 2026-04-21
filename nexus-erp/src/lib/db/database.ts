@@ -103,6 +103,10 @@ export interface Invoice {
   amountDue?: number;
   notes?: string;
   journalEntryId?: string;
+  approvalStatus?: "pending" | "approved" | "rejected"; // undefined = legacy (treated as approved)
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedReason?: string;
 }
 
 export interface POLine {
@@ -210,6 +214,8 @@ export interface AppSettings {
   vatRate: number;
   vatName: string;
   vatInclusive: boolean;
+  lockedPeriods: string[];        // ["2024-01", "2024-02"] — prevents edits in closed months
+  requireInvoiceApproval: boolean; // if true, credit invoices need approval before posting
 }
 
 export interface EmailLog {
@@ -298,6 +304,8 @@ export function createInitialDatabaseState(): DatabaseState {
       vatRate: 0.15,
       vatName: "ضريبة القيمة المضافة",
       vatInclusive: false,
+      lockedPeriods: [],
+      requireInvoiceApproval: false,
     },
     counters: { je: 1, inv: 1, po: 1, tx: 1 },
   };

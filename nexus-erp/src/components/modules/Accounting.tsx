@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { DB, Account, JournalLine } from "@/lib/db/database";
 import { AccountingEngine } from "@/lib/engine/accounting";
 import { fmt, fmtDate, uid, logActivity } from "@/lib/engine/helpers";
+import { hasPermission, isPeriodLocked } from "@/lib/engine/permissions";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -59,9 +60,20 @@ export function Accounting({ addToast }: Props) {
     setAcctForm({ code: "", name: "", type: "asset", category: "current_asset", parentId: "" });
   };
 
+  const canCreateJE = hasPermission(user, "create_accounting");
+
   const handlePostJE = () => {
+    if (!canCreateJE) { addToast("ليس لديك صلاحية إنشاء قيود يومية.", "error"); return; }
     if (!jeForm.description) { addToast(t("fillRequired"), "error"); return; }
     if (!balanced) { addToast(t("unbalancedEntry"), "error"); return; }
+
+    // Period lock check — use today's date for manual JEs
+    const jeDate = new Date().toISOString().slice(0, 10);
+    if (isPeriodLocked(jeDate, db.settings.lockedPeriods ?? [])) {
+      addToast(`الفترة المحاسبية ${jeDate.slice(0, 7)} مقفلة — لا يمكن إضافة قيود فيها.`, "error");
+      return;
+    }
+
     const lines: JournalLine[] = jeForm.lines
       .filter((l) => l.accountId && (+l.debit > 0 || +l.credit > 0))
       .map((l) => ({

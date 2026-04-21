@@ -8,6 +8,7 @@ import { DB, Invoice, InvoiceLine } from "@/lib/db/database";
 import { AccountingEngine } from "@/lib/engine/accounting";
 import { TaxService, VatMode } from "@/lib/engine/tax";
 import { fmt, fmtDate, uid, today, logActivity, logError } from "@/lib/engine/helpers";
+import { hasPermission, isPeriodLocked } from "@/lib/engine/permissions";
 import { KPI }         from "@/components/ui/KPI";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
@@ -67,11 +68,24 @@ export function Sales({ addToast }: Props) {
     total: l.total, taxRate: l.taxRate, mode: vatMode, exempt: l.taxExempt,
   })));
 
+  const canApprove = hasPermission(user, "approve_invoices");
+
   const handleCreate = () => {
     const cust = db.customers.find((c) => c.id === form.customerId);
     if (!cust || form.lines.some((l) => !l.productId || l.qty < 1)) {
       addToast(t("fillRequired"), "error"); return;
     }
+
+    // Period lock check
+    const invoiceDate = today();
+    if (isPeriodLocked(invoiceDate, settings.lockedPeriods ?? [])) {
+      addToast(`الفترة المحاسبية ${invoiceDate.slice(0, 7)} مقفلة — لا يمكن إنشاء فواتير فيها.`, "error");
+      return;
+    }
+
+    const isCash     = form.paymentType === "cash";
+    const needsApproval = settings.requireInvoiceApproval && !isCash;
+
     const id = `INV-${String(DB.nextId("inv")).padStart(4, "0")}`;
     const invoiceLines: InvoiceLine[] = formLines.map((l) => ({
       productId:   l.productId,
@@ -81,31 +95,64 @@ export function Sales({ addToast }: Props) {
       taxExempt: l.taxExempt,
     }));
     const invoice: Invoice = {
-      id, date: today(),
+      id, date: invoiceDate,
       dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       customerId: cust.id, customerName: cust.name,
-      status: form.paymentType === "cash" ? "paid" : "outstanding",
-      paymentType: form.paymentType as "cash" | "credit", currency: settings.baseCurrency || "SAR",
+      status: isCash ? "paid" : "outstanding",
+      paymentType: form.paymentType as "cash" | "credit",
+      currency: settings.baseCurrency || "SAR",
       lines: invoiceLines, subtotal: sums.subtotal, taxAmount: sums.tax, total: sums.total,
       vatEnabled, vatInclusive,
-      amountPaid: form.paymentType === "cash" ? sums.total : 0,
-      amountDue:  form.paymentType === "cash" ? 0 : sums.total,
+      amountPaid: isCash ? sums.total : 0,
+      amountDue:  isCash ? 0 : sums.total,
       notes: form.notes,
+      approvalStatus: needsApproval ? "pending" : "approved",
     };
     try {
-      const je = AccountingEngine.postSalesInvoice(invoice);
-      invoice.journalEntryId = je.id;
+      // Only post to accounting if approved (cash is auto-approved)
+      if (!needsApproval) {
+        const je = AccountingEngine.postSalesInvoice(invoice);
+        invoice.journalEntryId = je.id;
+      }
       db.invoices.unshift(invoice);
       DB.save();
       setInvoices([...db.invoices]);
-      logActivity(user?.id || "", user?.name || "", "CREATE", "Sales", `أنشأ الفاتورة ${id}`);
-      addToast(t("invoiceCreated"), "success");
+      logActivity(user?.id || "", user?.name || "", "CREATE", "Sales", `أنشأ الفاتورة ${id}${needsApproval ? " (بانتظار الموافقة)" : ""}`);
+      addToast(needsApproval ? `تم إنشاء الفاتورة ${id} — بانتظار موافقة المدير` : t("invoiceCreated"), needsApproval ? "info" : "success");
       setShowModal(false);
       setForm({ customerId: "", paymentType: "credit", lines: [{ productId: "", qty: 1, discount: 0 }], notes: "" });
-    } catch (e: any) { 
-      addToast(e.message, "error"); 
+    } catch (e: any) {
+      addToast(e.message, "error");
       logError(user?.id || "", user?.name || "", "Sales", e.message);
     }
+  };
+
+  const handleApprove = (inv: Invoice) => {
+    if (!canApprove) return;
+    try {
+      inv.approvalStatus = "approved";
+      inv.approvedBy     = user?.name || "admin";
+      inv.approvedAt     = new Date().toISOString();
+      if (!inv.journalEntryId) {
+        const je = AccountingEngine.postSalesInvoice(inv);
+        inv.journalEntryId = je.id;
+      }
+      DB.save();
+      setInvoices([...db.invoices]);
+      logActivity(user?.id || "", user?.name || "", "APPROVE", "Sales", `اعتمد الفاتورة ${inv.id}`);
+      addToast(`تم اعتماد الفاتورة ${inv.id} وتسجيلها محاسبياً`, "success");
+    } catch (e: any) { addToast(e.message, "error"); }
+  };
+
+  const handleReject = (inv: Invoice) => {
+    if (!canApprove) return;
+    const reason = window.prompt("سبب الرفض (اختياري):");
+    inv.approvalStatus  = "rejected";
+    inv.rejectedReason  = reason || "";
+    DB.save();
+    setInvoices([...db.invoices]);
+    logActivity(user?.id || "", user?.name || "", "REJECT", "Sales", `رفض الفاتورة ${inv.id}`);
+    addToast(`تم رفض الفاتورة ${inv.id}`, "info");
   };
 
   const filtered = invoices.filter((inv) => inv.id.includes(search) || inv.customerName?.includes(search));
@@ -141,13 +188,36 @@ export function Sales({ addToast }: Props) {
             <div style={S.sectionTitle}>{t("salesInvoices")} ({invoices.length})</div>
           </div>
         </div>
+        {/* Pending approval banner */}
+        {invoices.some(i => i.approvalStatus === "pending") && (
+          <div style={{ background: "#FFF8E1", border: `1px solid ${C.warning}`, borderRadius: 8, padding: "10px 16px", marginBottom: 12, fontSize: 13, color: C.warning, fontWeight: 700 }}>
+            ⚠️ يوجد {invoices.filter(i => i.approvalStatus === "pending").length} فاتورة بانتظار الموافقة
+          </div>
+        )}
         <DataTable
           headers={[
-            { label: t("jeRef") }, { label: t("status") }, { label: t("total") },
+            ...(canApprove ? [{ label: "إجراء" }] : []),
+            { label: "الموافقة" }, { label: t("jeRef") }, { label: t("status") }, { label: t("total") },
             { label: "ضريبة" }, { label: t("type") }, { label: t("customer") },
             { label: t("date") }, { label: t("invoiceNo") },
           ]}
           rows={filtered.map((inv) => [
+            ...(canApprove ? [
+              inv.approvalStatus === "pending" ? (
+                <span key="act" style={{ display: "flex", gap: 4 }}>
+                  <button onClick={() => handleApprove(inv)} style={{ ...S.btn("sm"), background: C.success, color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>✓ اعتماد</button>
+                  <button onClick={() => handleReject(inv)}  style={{ ...S.btn("sm"), background: C.danger,  color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>✗ رفض</button>
+                </span>
+              ) : <span key="act">—</span>,
+            ] : []),
+            <span key="ap" style={{ fontSize: 11, fontWeight: 700, color:
+              inv.approvalStatus === "pending"  ? C.warning :
+              inv.approvalStatus === "rejected" ? C.danger  :
+              !inv.approvalStatus               ? C.textMuted : C.success }}>
+              {inv.approvalStatus === "pending"  ? "⏳ انتظار" :
+               inv.approvalStatus === "rejected" ? "✗ مرفوض"  :
+               !inv.approvalStatus               ? "—"         : "✓ معتمد"}
+            </span>,
             <span key="je" style={{ color: C.purple, fontSize: 12 }}>{inv.journalEntryId || "—"}</span>,
             <StatusBadge key="st" status={inv.status} />,
             <span key="tot" style={{ fontWeight: 800, color: C.text }}>{fmt(inv.total)}</span>,
