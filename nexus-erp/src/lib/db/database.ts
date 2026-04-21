@@ -212,6 +212,20 @@ export interface AppSettings {
   vatInclusive: boolean;
 }
 
+export interface EmailLog {
+  id: string;
+  date: string;
+  direction: "sent" | "received";
+  from: string;
+  to: string;
+  subject: string;
+  body?: string;
+  relatedType?: "invoice" | "po" | "customer" | "supplier" | "other";
+  relatedId?: string;
+  status: "delivered" | "failed" | "pending";
+  createdBy: string;
+}
+
 export interface DatabaseState {
   users: User[];
   accounts: Account[];
@@ -225,6 +239,7 @@ export interface DatabaseState {
   warehouses: Warehouse[];
   inventoryMovements: InventoryMovement[];
   activityLog: ActivityLog[];
+  emailLog: EmailLog[];
   settings: AppSettings;
   counters: { je: number; inv: number; po: number; tx: number };
 }
@@ -270,6 +285,7 @@ export function createInitialDatabaseState(): DatabaseState {
     warehouses: [],
     inventoryMovements: [],
     activityLog: [],
+    emailLog: [],
     settings: {
       companyName: "",
       taxNumber: "",

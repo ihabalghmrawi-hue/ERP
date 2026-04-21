@@ -6,8 +6,11 @@ import {
 } from "./types";
 
 // ─── Storage Keys ─────────────────────────────────────────
-const SAAS_KEY   = "nexus_saas_global";   // companies + superadmins
-const SESSION_KEY = "nexus_saas_session"; // who is logged in (super admin OR company)
+const SAAS_KEY    = "nexus_saas_global";   // companies + superadmins
+const SESSION_KEY = "nexus_saas_session";  // who is logged in (super admin OR company)
+
+// ─── Server sync token (set after superadmin login) ──────
+let _adminToken: string | null = null;
 
 // ─── Initial SaaS State ───────────────────────────────────
 function createInitialSaaS(): SaaSDatabase {
@@ -60,8 +63,24 @@ export const SaaSDB = {
     return _saas;
   },
 
+  setAdminToken(token: string): void {
+    _adminToken = token;
+  },
+
   save(): void {
-    if (_saas) saveSaaS(_saas);
+    if (!_saas) return;
+    saveSaaS(_saas);
+    // Fire-and-forget server sync (PostgreSQL persistence)
+    if (_adminToken && typeof window !== "undefined") {
+      fetch("/api/saas-data", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${_adminToken}`,
+        },
+        body: JSON.stringify(_saas),
+      }).catch(() => {});
+    }
   },
 
   isBootstrapped(): boolean {

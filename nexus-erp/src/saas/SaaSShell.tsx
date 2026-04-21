@@ -88,13 +88,12 @@ export function SaaSShell() {
       if (co) {
         const access = canAccess(co.id);
         if (!access.allowed) { setCompany(co); setScreen("subscription_wall"); return; }
-        // Load tenant DB into memory
+
+        if (session.token) TenantDB.setToken(session.token);
         TenantDB.load(co.id);
-        // Sync the legacy DB singleton so existing modules work unchanged
         const tenantState = TenantDB.get();
         (DB as any)._syncFromTenant(tenantState, co.id);
         setLang((tenantState.settings.lang as Lang) || "ar");
-        // Restore the logged-in user from tenant data
         const restoredUser = session.userId
           ? tenantState.users.find(u => u.id === session.userId) ?? null
           : null;
@@ -117,6 +116,7 @@ export function SaaSShell() {
 
   const handleSuperLogin = (admin: SuperAdmin, token?: string) => {
     SaaSDB.setSession({ type: "superadmin", id: admin.id, name: admin.name, email: admin.email, token });
+    if (token) SaaSDB.setAdminToken(token);
     setSuperAdmin(admin);
     setScreen("super_panel");
   };
@@ -127,15 +127,27 @@ export function SaaSShell() {
     setScreen("super_login");
   };
 
-  const handleCompanyLogin = (co: Company, user: User, token?: string) => {
+  const handleCompanyLogin = async (co: Company, user: User, token?: string) => {
     const access = canAccess(co.id);
     if (!access.allowed) {
       setCompany(co);
       setScreen("subscription_wall");
       return;
     }
-    TenantDB.load(co.id);
-    const tenantState = TenantDB.get();
+
+    // Set token before any sync so server calls are authenticated
+    if (token) TenantDB.setToken(token);
+
+    // Load from localStorage first (instant)
+    let tenantState = TenantDB.load(co.id);
+
+    // If no local data, pull from server (new device / cleared browser)
+    const isEmpty = tenantState.users.length === 0 && tenantState.invoices.length === 0;
+    if (isEmpty && token) {
+      const serverState = await TenantDB.loadFromServer(co.id);
+      if (serverState) tenantState = serverState;
+    }
+
     (DB as any)._syncFromTenant(tenantState, co.id);
     setLang((tenantState.settings.lang as Lang) || "ar");
     SaaSDB.setSession({ type: "company", id: co.id, name: co.name, email: co.email, userId: user.id, token });
@@ -146,7 +158,9 @@ export function SaaSShell() {
       totalInvoices: tenantState.invoices.length,
     });
     setCompany(co);
-    setTenantUser(user);
+    // Re-resolve user from (potentially server-synced) tenantState
+    const resolvedUser = tenantState.users.find(u => u.id === user.id) ?? user;
+    setTenantUser(resolvedUser);
     if (shouldShowRenewalWarning(co.id)) {
       addToast(`⚠️ اشتراكك ينتهي خلال ${getDaysLeft(co.id)} أيام`, "info");
     }

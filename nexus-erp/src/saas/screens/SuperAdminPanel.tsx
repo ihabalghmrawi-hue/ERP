@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SaaSDB } from "../saasDB";
 import { Company, PLANS, PlanId, SuperAdmin } from "../types";
 import { C, S } from "@/lib/engine/design";
@@ -15,7 +15,7 @@ interface Props {
   addToast: (msg: string, type?: "success" | "error" | "info") => void;
 }
 
-type AdminPage = "dashboard" | "companies" | "subscriptions" | "new_company";
+type AdminPage = "dashboard" | "companies" | "subscriptions" | "new_company" | "ops";
 
 export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
   const [page, setPage] = useState<AdminPage>("dashboard");
@@ -26,10 +26,11 @@ export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
   const db = SaaSDB.get();
 
   const NAV = [
-    { id: "dashboard"    as AdminPage, label: "لوحة التحكم",    icon: "🏠" },
-    { id: "companies"    as AdminPage, label: "الشركات",         icon: "🏢" },
-    { id: "subscriptions"as AdminPage, label: "الاشتراكات",      icon: "💳" },
-    { id: "new_company"  as AdminPage, label: "شركة جديدة",      icon: "➕" },
+    { id: "dashboard"     as AdminPage, label: "لوحة التحكم",       icon: "🏠" },
+    { id: "ops"           as AdminPage, label: "الداشبورد التشغيلي", icon: "📊" },
+    { id: "companies"     as AdminPage, label: "الشركات",            icon: "🏢" },
+    { id: "subscriptions" as AdminPage, label: "الاشتراكات",         icon: "💳" },
+    { id: "new_company"   as AdminPage, label: "شركة جديدة",         icon: "➕" },
   ];
 
   return (
@@ -63,8 +64,9 @@ export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
         </div>
 
         <div style={{ padding: 24 }}>
-          {page === "dashboard" && <AdminDashboard stats={stats} companies={db.companies} />}
-          {page === "companies" && <CompaniesManager companies={db.companies} addToast={addToast} onRefresh={rerender} />}
+          {page === "dashboard"  && <AdminDashboard stats={stats} companies={db.companies} />}
+          {page === "ops"        && <OperationsDashboard session={SaaSDB.getSession()} />}
+          {page === "companies"  && <CompaniesManager companies={db.companies} addToast={addToast} onRefresh={rerender} />}
           {page === "subscriptions" && <SubscriptionsManager companies={db.companies} addToast={addToast} onRefresh={rerender} />}
           {page === "new_company" && <NewCompanyForm addToast={addToast} onCreated={() => { setPage("companies"); rerender(); }} />}
         </div>
@@ -421,6 +423,180 @@ function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () 
       </div>
       {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>{error}</div>}
       <button style={{ ...S.btn("primary"), border: "none", padding: "10px 28px" }} onClick={handle}>إنشاء الشركة</button>
+    </div>
+  );
+}
+
+// ── Operations Dashboard ────────────────────────────────────
+
+type Period = "day" | "week" | "month";
+
+interface StatRow {
+  companyId: string; companyName: string; status: string;
+  subscriptionPlan: string; invoices: number; revenue: number;
+  emails: number; pos: number; lastActivity: string;
+}
+interface StatsResponse {
+  period: Period;
+  totals: { invoices: number; revenue: number; emails: number; pos: number };
+  companies: StatRow[];
+}
+
+function fmt(n: number) {
+  return n.toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function OperationsDashboard({ session }: { session: ReturnType<typeof SaaSDB.getSession> }) {
+  const [period, setPeriod] = useState<Period>("month");
+  const [data, setData]     = useState<StatsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const token = session?.token;
+
+  useEffect(() => {
+    if (!token) { setError("لا يوجد توكن. يرجى تسجيل الدخول مجدداً."); return; }
+    setLoading(true);
+    setError(null);
+    fetch(`/api/admin/stats?period=${period}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => { setError("فشل تحميل البيانات"); setLoading(false); });
+  }, [period, token]);
+
+  const PERIODS: { id: Period; label: string }[] = [
+    { id: "day",   label: "يومي" },
+    { id: "week",  label: "أسبوعي" },
+    { id: "month", label: "شهري" },
+  ];
+
+  const PLAN_LABELS: Record<string, string> = {
+    trial: "تجريبي", starter: "البداية", pro: "الاحترافي", enterprise: "المؤسسي",
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 4 }}>الداشبورد التشغيلي</div>
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>ملخص الأداء عبر جميع الشركات</div>
+
+      {/* Period selector */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+        {PERIODS.map(p => (
+          <button key={p.id} onClick={() => setPeriod(p.id)}
+            style={{ padding: "7px 20px", borderRadius: 7, cursor: "pointer", fontFamily: "'Tajawal', sans-serif",
+              background: period === p.id ? C.accentMid : C.surface,
+              color: period === p.id ? "#fff" : C.textSec,
+              border: `1px solid ${period === p.id ? C.accentMid : C.border}`,
+              fontWeight: 700, fontSize: 13 }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 60, color: C.textMuted }}>جارٍ التحميل...</div>
+      )}
+
+      {error && (
+        <div style={{ background: "#FEF2F2", border: `1px solid ${C.danger}`, color: C.danger,
+          padding: 16, borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      {data && !loading && (
+        <>
+          {/* KPI cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+            {[
+              { label: "إجمالي الفواتير",    value: data.totals.invoices, icon: "🧾", color: C.accentMid },
+              { label: "إجمالي الإيراد (ر.س)", value: fmt(data.totals.revenue), icon: "💰", color: C.success },
+              { label: "المراسلات المرسلة",  value: data.totals.emails,   icon: "📧", color: C.purple },
+              { label: "أوامر الشراء",        value: data.totals.pos,      icon: "📦", color: C.warning },
+            ].map(k => (
+              <div key={k.label} style={{ background: C.surface, borderRadius: 10, padding: 20,
+                borderTop: `3px solid ${k.color}`, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>{k.label}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: C.text }}>{k.value}</div>
+                <div style={{ fontSize: 20, opacity: 0.12 }}>{k.icon}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Revenue bar chart (visual representation) */}
+          {data.companies.length > 0 && (
+            <div style={{ ...S.card, marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 16 }}>الإيراد حسب الشركة</div>
+              {(() => {
+                const maxRev = Math.max(...data.companies.map(c => c.revenue), 1);
+                return data.companies.slice(0, 8).map(co => (
+                  <div key={co.companyId} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
+                      <span style={{ color: C.text, fontWeight: 700 }}>{co.companyName}</span>
+                      <span style={{ color: C.textMuted }}>{fmt(co.revenue)} ر.س</span>
+                    </div>
+                    <div style={{ background: C.border, borderRadius: 4, height: 7, overflow: "hidden" }}>
+                      <div style={{
+                        background: co.revenue > 0 ? C.success : C.border,
+                        width: `${Math.round((co.revenue / maxRev) * 100)}%`,
+                        height: "100%", borderRadius: 4,
+                        transition: "width 0.5s ease",
+                      }} />
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+
+          {/* Company details table */}
+          <div style={S.card}>
+            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 16 }}>تفصيل الأداء — كل الشركات</div>
+            {data.companies.length === 0 ? (
+              <div style={{ color: C.textMuted, textAlign: "center", padding: 32 }}>لا توجد بيانات للفترة المحددة</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${C.border}`, background: C.bg }}>
+                      {["الشركة", "الخطة", "الفواتير", "الإيراد (ر.س)", "المراسلات", "أوامر الشراء", "آخر نشاط"].map(h => (
+                        <th key={h} style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700,
+                          fontSize: 12, color: C.textSec, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.companies.map((co, i) => (
+                      <tr key={co.companyId}
+                        style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? "#fff" : C.bg }}>
+                        <td style={{ ...S.td, fontWeight: 700 }}>{co.companyName}</td>
+                        <td style={S.td}>
+                          <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                            background: co.subscriptionPlan === "trial" ? "#FFF3CD" : "#DBEAFE",
+                            color: co.subscriptionPlan === "trial" ? C.warning : C.accentMid }}>
+                            {PLAN_LABELS[co.subscriptionPlan] ?? co.subscriptionPlan}
+                          </span>
+                        </td>
+                        <td style={{ ...S.td, textAlign: "center" }}>{co.invoices}</td>
+                        <td style={{ ...S.td, color: co.revenue > 0 ? C.success : C.textMuted, fontWeight: 700 }}>
+                          {fmt(co.revenue)}
+                        </td>
+                        <td style={{ ...S.td, textAlign: "center" }}>{co.emails}</td>
+                        <td style={{ ...S.td, textAlign: "center" }}>{co.pos}</td>
+                        <td style={{ ...S.td, fontSize: 11, color: C.textMuted }}>
+                          {co.lastActivity ? new Date(co.lastActivity).toLocaleDateString("ar-SA") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
