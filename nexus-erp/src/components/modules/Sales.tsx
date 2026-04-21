@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { S, C } from "@/lib/engine/design";
 import { useLang } from "@/hooks/useLang";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,6 +9,7 @@ import { AccountingEngine } from "@/lib/engine/accounting";
 import { TaxService, VatMode } from "@/lib/engine/tax";
 import { fmt, fmtDate, uid, today, logActivity, logError } from "@/lib/engine/helpers";
 import { hasPermission, isPeriodLocked } from "@/lib/engine/permissions";
+import { zatcaQRDataURL } from "@/lib/engine/zatca";
 import { KPI }         from "@/components/ui/KPI";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
@@ -46,8 +47,9 @@ export function Sales({ addToast }: Props) {
   const db       = DB.get();
   const settings = db.settings;
 
-  const [invoices, setInvoices] = useState<Invoice[]>([...db.invoices]);
-  const [showModal, setShowModal] = useState(false);
+  const [invoices, setInvoices]     = useState<Invoice[]>([...db.invoices]);
+  const [showModal, setShowModal]   = useState(false);
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [search, setSearch]       = useState("");
 
   const [vatEnabled,   setVatEnabled]   = useState(settings.vatEnabled   || false);
@@ -196,12 +198,14 @@ export function Sales({ addToast }: Props) {
         )}
         <DataTable
           headers={[
+            { label: "" },
             ...(canApprove ? [{ label: "إجراء" }] : []),
             { label: "الموافقة" }, { label: t("jeRef") }, { label: t("status") }, { label: t("total") },
             { label: "ضريبة" }, { label: t("type") }, { label: t("customer") },
             { label: t("date") }, { label: t("invoiceNo") },
           ]}
           rows={filtered.map((inv) => [
+            <button key="print" onClick={() => setPrintInvoice(inv)} style={{ ...S.btn("outline"), padding: "3px 10px", fontSize: 11 }}>🖨 طباعة</button>,
             ...(canApprove ? [
               inv.approvalStatus === "pending" ? (
                 <span key="act" style={{ display: "flex", gap: 4 }}>
@@ -387,6 +391,151 @@ export function Sales({ addToast }: Props) {
           </div>
         </Modal>
       )}
+
+      {printInvoice && (
+        <InvoicePrintModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />
+      )}
     </div>
+  );
+}
+
+// ── Invoice Print Modal with ZATCA QR ──────────────────────────────────────
+function InvoicePrintModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const db = DB.get();
+  const settings = db.settings;
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!settings.vatEnabled) return;
+    zatcaQRDataURL({
+      sellerName:   settings.companyName || "شركة",
+      vatNumber:    settings.taxNumber   || "000000000000000",
+      invoiceDate:  invoice.date,
+      totalWithVat: invoice.total,
+      vatAmount:    invoice.taxAmount || 0,
+    }).then(setQrUrl).catch(() => {});
+  }, [invoice.id]);
+
+  function handlePrint() {
+    window.print();
+  }
+
+  return (
+    <Modal title={`فاتورة ${invoice.id}`} onClose={onClose} wide>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 16 }}>
+        <button style={{ ...S.btn("primary"), border: "none", padding: "7px 20px" }} onClick={handlePrint}>🖨 طباعة</button>
+        <button style={{ ...S.btn("outline") }} onClick={onClose}>إغلاق</button>
+      </div>
+
+      <div id="invoice-print" style={{ fontFamily: "'Tajawal','Cairo',sans-serif", direction: "rtl", fontSize: 13, color: "#111", maxWidth: 720, margin: "0 auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, paddingBottom: 16, borderBottom: "2px solid #1A5276" }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#1A5276" }}>{settings.companyName || "اسم الشركة"}</div>
+            {settings.taxNumber && <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>الرقم الضريبي: {settings.taxNumber}</div>}
+            {settings.address  && <div style={{ fontSize: 12, color: "#555" }}>{settings.address}</div>}
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#1A5276", marginBottom: 4 }}>فاتورة ضريبية</div>
+            <div style={{ fontSize: 13, color: "#555" }}>{invoice.id}</div>
+            <div style={{ fontSize: 12, color: "#888" }}>{invoice.date}</div>
+          </div>
+        </div>
+
+        {/* Customer info */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, padding: "12px 16px", background: "#F8F8F6", borderRadius: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#888", marginBottom: 2 }}>العميل</div>
+            <div style={{ fontWeight: 700 }}>{invoice.customerName}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "#888", marginBottom: 2 }}>تاريخ الاستحقاق</div>
+            <div style={{ fontWeight: 700 }}>{invoice.dueDate || "—"}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "#888", marginBottom: 2 }}>نوع الدفع</div>
+            <div>{invoice.paymentType === "cash" ? "نقداً" : "آجل"}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "#888", marginBottom: 2 }}>الحالة</div>
+            <div style={{ fontWeight: 700, color: invoice.status === "paid" ? "#1E8449" : invoice.status === "overdue" ? "#A93226" : "#B7770D" }}>
+              {invoice.status === "paid" ? "مدفوعة" : invoice.status === "overdue" ? "متأخرة" : "مستحقة"}
+            </div>
+          </div>
+        </div>
+
+        {/* Lines table */}
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16, fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "#1A5276", color: "white" }}>
+              {["المنتج / الخدمة", "الكمية", "سعر الوحدة", "خصم%", "المبلغ قبل الضريبة", "الضريبة", "الإجمالي"].map(h => (
+                <th key={h} style={{ padding: "8px 10px", textAlign: "start", fontWeight: 700 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {invoice.lines.map((line, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? "#F8F8F6" : "white", borderBottom: "1px solid #E2DDD5" }}>
+                <td style={{ padding: "7px 10px" }}>{line.productName}</td>
+                <td style={{ padding: "7px 10px" }}>{line.qty}</td>
+                <td style={{ padding: "7px 10px", direction: "ltr" }}>{line.unitPrice.toLocaleString("ar-SA")}</td>
+                <td style={{ padding: "7px 10px" }}>{line.discount ? `${line.discount}%` : "—"}</td>
+                <td style={{ padding: "7px 10px", direction: "ltr" }}>{line.subtotal.toLocaleString("ar-SA")}</td>
+                <td style={{ padding: "7px 10px", direction: "ltr" }}>{(line.tax || 0).toLocaleString("ar-SA")}</td>
+                <td style={{ padding: "7px 10px", fontWeight: 700, direction: "ltr" }}>{line.total.toLocaleString("ar-SA")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Totals + QR */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          {/* QR code */}
+          <div style={{ textAlign: "center" }}>
+            {qrUrl ? (
+              <>
+                <img src={qrUrl} alt="ZATCA QR" style={{ width: 120, height: 120 }} />
+                <div style={{ fontSize: 10, color: "#888", marginTop: 4 }}>رمز QR — متوافق مع ZATCA</div>
+              </>
+            ) : settings.vatEnabled ? (
+              <div style={{ width: 120, height: 120, background: "#F0EEE8", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#888" }}>QR</div>
+            ) : null}
+          </div>
+
+          {/* Totals */}
+          <div style={{ minWidth: 260 }}>
+            {[
+              { label: "المجموع الفرعي", value: invoice.subtotal },
+              ...(settings.vatEnabled ? [{ label: `${settings.vatName || "ضريبة القيمة المضافة"} (${((settings.vatRate || 0) * 100).toFixed(0)}%)`, value: invoice.taxAmount || 0 }] : []),
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 12px", fontSize: 13 }}>
+                <span style={{ color: "#555" }}>{label}</span>
+                <span style={{ direction: "ltr" }}>{value.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} {settings.baseCurrency}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "9px 12px", background: "#1A5276", color: "white", borderRadius: 6, marginTop: 6, fontWeight: 800, fontSize: 15 }}>
+              <span>الإجمالي</span>
+              <span style={{ direction: "ltr" }}>{invoice.total.toLocaleString("ar-SA", { minimumFractionDigits: 2 })} {settings.baseCurrency}</span>
+            </div>
+          </div>
+        </div>
+
+        {invoice.notes && (
+          <div style={{ marginTop: 16, padding: "10px 14px", background: "#F8F8F6", borderRadius: 8, fontSize: 12, color: "#555" }}>
+            <span style={{ fontWeight: 700 }}>ملاحظات: </span>{invoice.notes}
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @media print {
+          body > * { display: none !important; }
+          .modal-overlay { position: static !important; background: none !important; }
+          .modal-container { box-shadow: none !important; max-height: none !important; overflow: visible !important; }
+          #invoice-print { display: block !important; }
+          button { display: none !important; }
+        }
+      `}</style>
+    </Modal>
   );
 }

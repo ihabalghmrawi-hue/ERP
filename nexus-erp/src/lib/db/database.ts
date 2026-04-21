@@ -170,6 +170,8 @@ export interface User {
   companyId?: string;
   lastLogin: string;
   createdAt: string;
+  twoFactorEnabled?: boolean;
+  twoFactorSecret?: string; // base32-encoded TOTP secret (stored server-side only)
 }
 
 export interface ActivityLog {

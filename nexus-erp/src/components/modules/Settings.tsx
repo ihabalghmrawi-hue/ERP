@@ -393,6 +393,9 @@ export function Settings({ lang, setLang }: Props) {
         </button>
       </div>
 
+      {/* Two-Factor Authentication */}
+      <TwoFactorPanel token={SaaSDB.getSession()?.token} user={user} />
+
       {/* Active Sessions */}
       <ActiveSessionsPanel token={SaaSDB.getSession()?.token} currentRole={user?.role} />
 
@@ -592,6 +595,149 @@ function ActiveSessionsPanel({ token, currentRole }: { token?: string; currentRo
           >
             ↻ تحديث
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Two-Factor Authentication Setup ───────────────────────────────────────
+type TwoFactorStep = "idle" | "setup" | "disable";
+
+function TwoFactorPanel({ token, user }: { token?: string; user: any }) {
+  const [step, setStep]         = useState<TwoFactorStep>("idle");
+  const [secret, setSecret]     = useState("");
+  const [qrUrl, setQrUrl]       = useState("");
+  const [code, setCode]         = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError]       = useState("");
+  const [success, setSuccess]   = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [enabled, setEnabled]   = useState(!!(user as any)?.twoFactorEnabled);
+
+  async function startSetup() {
+    if (!token) return;
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/auth/2fa", { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { setError("فشل التحميل"); setLoading(false); return; }
+      const data = await res.json();
+      setSecret(data.secret); setQrUrl(data.qrDataUrl); setStep("setup");
+    } catch { setError("خطأ في الاتصال"); }
+    setLoading(false);
+  }
+
+  async function confirmEnable() {
+    if (!token || code.length < 6) { setError("أدخل الرمز المكون من 6 أرقام"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/auth/2fa", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ secret, token: code }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "رمز غير صحيح"); setLoading(false); return; }
+      setSuccess("✓ تم تفعيل المصادقة الثنائية بنجاح");
+      setEnabled(true); setStep("idle"); setCode(""); setSecret(""); setQrUrl("");
+    } catch { setError("خطأ في الاتصال"); }
+    setLoading(false);
+  }
+
+  async function confirmDisable() {
+    if (!token || !code || !password) { setError("أدخل الرمز وكلمة المرور"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/auth/2fa", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ token: code, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "فشل الإلغاء"); setLoading(false); return; }
+      setSuccess("تم إلغاء تفعيل المصادقة الثنائية");
+      setEnabled(false); setStep("idle"); setCode(""); setPassword("");
+    } catch { setError("خطأ في الاتصال"); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ ...S.card }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: step !== "idle" ? 16 : 0 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+            🔐 المصادقة الثنائية (2FA)
+            {enabled && <span style={{ marginRight: 8, fontSize: 11, color: C.success, fontWeight: 700 }}>● مفعّلة</span>}
+          </div>
+          {step === "idle" && (
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+              {enabled ? "حسابك محمي بطبقة أمان إضافية" : "أضف طبقة حماية إضافية بتطبيق المصادقة (Google Authenticator, Authy)"}
+            </div>
+          )}
+        </div>
+        {step === "idle" && (
+          <button
+            style={{ ...S.btn(enabled ? "danger" : "primary"), border: "none", padding: "7px 18px", fontSize: 13 }}
+            onClick={() => { setError(""); setSuccess(""); if (enabled) setStep("disable"); else startSetup(); }}
+            disabled={loading}
+          >
+            {loading ? "..." : enabled ? "إلغاء التفعيل" : "تفعيل 2FA"}
+          </button>
+        )}
+      </div>
+
+      {success && <div style={{ color: C.success, fontSize: 13, marginBottom: 10, fontWeight: 700 }}>{success}</div>}
+      {error   && <div style={{ color: C.danger,  fontSize: 13, marginBottom: 10 }}>{error}</div>}
+
+      {step === "setup" && qrUrl && (
+        <div>
+          <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>
+            افتح تطبيق المصادقة وامسح رمز QR، ثم أدخل الرمز الناتج للتأكيد:
+          </div>
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", marginBottom: 16 }}>
+            <img src={qrUrl} alt="2FA QR" style={{ width: 160, height: 160, border: `1px solid ${C.border}`, borderRadius: 8 }} />
+            <div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>أو أدخل المفتاح يدوياً:</div>
+              <div style={{ fontFamily: "monospace", fontSize: 12, background: C.surfaceAlt, padding: "6px 12px", borderRadius: 6, letterSpacing: 2, direction: "ltr", wordBreak: "break-all" }}>
+                {secret}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              style={{ ...S.input, width: 150, textAlign: "center", fontSize: 20, letterSpacing: 6, direction: "ltr" }}
+              type="text" inputMode="numeric" maxLength={6}
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="000000" autoFocus
+            />
+            <button style={{ ...S.btn("primary"), border: "none", padding: "8px 20px" }} onClick={confirmEnable} disabled={loading || code.length < 6}>
+              {loading ? "..." : "تأكيد التفعيل"}
+            </button>
+            <button style={{ ...S.btn("outline") }} onClick={() => { setStep("idle"); setCode(""); setSecret(""); setQrUrl(""); }}>إلغاء</button>
+          </div>
+        </div>
+      )}
+
+      {step === "disable" && (
+        <div>
+          <div style={{ fontSize: 13, color: C.textSec, marginBottom: 12 }}>
+            أدخل رمز التحقق الحالي من التطبيق وكلمة مرورك لإلغاء التفعيل:
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 }}>
+            <input
+              style={{ ...S.input, textAlign: "center", fontSize: 20, letterSpacing: 6, direction: "ltr" }}
+              type="text" inputMode="numeric" maxLength={6}
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="رمز التحقق" autoFocus
+            />
+            <input style={S.input} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="كلمة المرور الحالية" />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={{ ...S.btn("danger"), border: "none", padding: "8px 20px" }} onClick={confirmDisable} disabled={loading || !code || !password}>
+                {loading ? "..." : "إلغاء التفعيل"}
+              </button>
+              <button style={{ ...S.btn("outline") }} onClick={() => { setStep("idle"); setCode(""); setPassword(""); }}>رجوع</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

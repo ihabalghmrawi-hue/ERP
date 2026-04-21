@@ -4,6 +4,17 @@ import { signToken, signRefreshToken, verifyRefreshToken, tokenExpiryDate } from
 import { verifyPassword, hashPassword } from "@/lib/server/password";
 import { checkRateLimit, resetRateLimit } from "@/lib/server/rateLimit";
 import { query } from "@/lib/server/postgres";
+import * as OTPAuth from "otpauth";
+
+function verifyTOTP(secret: string, token: string): boolean {
+  try {
+    const totp = new OTPAuth.TOTP({
+      secret:    OTPAuth.Secret.fromBase32(secret),
+      algorithm: "SHA1", digits: 6, period: 30,
+    });
+    return totp.validate({ token, window: 1 }) !== null;
+  } catch { return false; }
+}
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -40,7 +51,7 @@ export async function POST(req: NextRequest) {
   const ip    = getClientIp(req);
   const ua    = req.headers.get("user-agent") ?? "";
   const body  = await req.json().catch(() => ({}));
-  const { email, password } = body;
+  const { email, password, totpToken } = body;
 
   if (!email || !password) {
     return NextResponse.json(
@@ -80,6 +91,17 @@ export async function POST(req: NextRequest) {
       superAdmin.password = hashPassword(password);
       await saveSaaSData(saas);
     }
+
+    // 2FA check
+    if ((superAdmin as any).twoFactorEnabled && (superAdmin as any).twoFactorSecret) {
+      if (!totpToken) {
+        return NextResponse.json({ error: "2fa_required", message: "أدخل رمز التحقق من تطبيق المصادقة." }, { status: 200 });
+      }
+      if (!verifyTOTP((superAdmin as any).twoFactorSecret, String(totpToken))) {
+        return NextResponse.json({ error: "رمز التحقق الثنائي غير صحيح." }, { status: 401 });
+      }
+    }
+
     resetRateLimit(`login:ip:${ip}`);
     resetRateLimit(`login:email:${email}`);
 
@@ -120,6 +142,16 @@ export async function POST(req: NextRequest) {
   const company = saas.companies.find((c) => c.id === companyId);
   if (!company) {
     return NextResponse.json({ error: "الشركة غير موجودة." }, { status: 401 });
+  }
+
+  // 2FA check
+  if (user.twoFactorEnabled && user.twoFactorSecret) {
+    if (!totpToken) {
+      return NextResponse.json({ error: "2fa_required", message: "أدخل رمز التحقق من تطبيق المصادقة." }, { status: 200 });
+    }
+    if (!verifyTOTP(user.twoFactorSecret, String(totpToken))) {
+      return NextResponse.json({ error: "رمز التحقق الثنائي غير صحيح." }, { status: 401 });
+    }
   }
 
   resetRateLimit(`login:ip:${ip}`);

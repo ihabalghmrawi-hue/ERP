@@ -16,25 +16,36 @@ interface Props {
 export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
+  const [totpToken, setTotpToken] = useState("");
+  const [needs2fa, setNeeds2fa] = useState(false);
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
   const handle = async () => {
     if (!email || !password) { setError("البريد وكلمة المرور مطلوبان"); return; }
+    if (needs2fa && !totpToken) { setError("أدخل رمز التحقق من تطبيق المصادقة"); return; }
     setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/company-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, totpToken: totpToken || undefined }),
       });
       const data = await res.json();
+
+      // 2FA required — show TOTP input
+      if (data.error === "2fa_required") {
+        setNeeds2fa(true);
+        setError("");
+        setLoading(false);
+        return;
+      }
+
       if (!res.ok) { setError(data.error || "البريد أو كلمة المرور غير صحيحة"); return; }
 
       const { company, user, tenantData, token } = data;
 
-      // Sync to localStorage for current session
       const db = SaaSDB.get();
       if (!db.companies.find(c => c.id === company.id)) {
         db.companies.push(company);
@@ -66,41 +77,74 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
             تسجيل الدخول
           </div>
 
-          <div style={S.formGroup}>
-            <label style={S.label}>البريد الإلكتروني</label>
-            <input style={S.input} type="email" value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") handle(); }}
-              placeholder="your@company.com" autoFocus />
-          </div>
+          {!needs2fa ? (
+            <>
+              <div style={S.formGroup}>
+                <label style={S.label}>البريد الإلكتروني</label>
+                <input style={S.input} type="email" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handle(); }}
+                  placeholder="your@company.com" autoFocus />
+              </div>
 
-          <div style={S.formGroup}>
-            <label style={S.label}>كلمة المرور</label>
-            <input style={S.input} type="password" value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") handle(); }}
-              placeholder="••••••••" />
-          </div>
+              <div style={S.formGroup}>
+                <label style={S.label}>كلمة المرور</label>
+                <input style={S.input} type="password" value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handle(); }}
+                  placeholder="••••••••" />
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔐</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>التحقق الثنائي</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
+                افتح تطبيق المصادقة وأدخل الرمز المكون من 6 أرقام
+              </div>
+              <input
+                style={{ ...S.input, textAlign: "center", fontSize: 24, letterSpacing: 8, direction: "ltr", width: "100%" }}
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={totpToken}
+                onChange={e => setTotpToken(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={e => { if (e.key === "Enter") handle(); }}
+                autoFocus
+                placeholder="000000"
+              />
+              <button
+                style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", marginTop: 8, textDecoration: "underline" }}
+                onClick={() => { setNeeds2fa(false); setTotpToken(""); setError(""); }}
+              >
+                رجوع إلى تسجيل الدخول
+              </button>
+            </div>
+          )}
 
           {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
 
           <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }} onClick={handle} disabled={loading}>
-            {loading ? "جارٍ التحقق..." : "دخول"}
+            {loading ? "جارٍ التحقق..." : needs2fa ? "تحقق" : "دخول"}
           </button>
 
-          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
-            <span style={{ fontSize: 12, color: C.textMuted }}>ليس لديك حساب؟ </span>
-            <button style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }} onClick={onRegister}>
-              سجّل شركتك الآن
+          {!needs2fa && (
+            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 20, paddingTop: 20, textAlign: "center" }}>
+              <span style={{ fontSize: 12, color: C.textMuted }}>ليس لديك حساب؟ </span>
+              <button style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }} onClick={onRegister}>
+                سجّل شركتك الآن
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!needs2fa && (
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            <button style={{ ...S.btn("ghost"), fontSize: 11, color: C.textMuted, border: "none", opacity: 0.5 }} onClick={onSuperAdmin}>
+              دخول المدير العام
             </button>
           </div>
-        </div>
-
-        <div style={{ textAlign: "center", marginTop: 16 }}>
-          <button style={{ ...S.btn("ghost"), fontSize: 11, color: C.textMuted, border: "none", opacity: 0.5 }} onClick={onSuperAdmin}>
-            دخول المدير العام
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
