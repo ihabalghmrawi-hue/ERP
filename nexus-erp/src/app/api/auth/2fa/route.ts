@@ -134,5 +134,3 @@ export async function DELETE(req: NextRequest) {
 
   return NextResponse.json({ ok: true, message: "تم إلغاء تفعيل المصادقة الثنائية" });
 }
-
-export { verifyTOTP };
