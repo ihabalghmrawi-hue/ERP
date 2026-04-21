@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, saveSaaSData, saveTenantData, loadTenantData } from "@/lib/server/storage";
 import { createInitialDatabaseState } from "@/lib/db/database";
+import { hashPassword } from "@/lib/server/password";
+import { sanitizeUser } from "@/lib/server/sanitize";
 import { PlanId, Subscription, SubscriptionStatus } from "@/saas/types";
 import { ALL_PERMISSIONS } from "@/lib/engine/permissions";
 
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
   tenant.settings.companyName = companyName;
   const user = {
     id: uid(), name: ownerName, email,
-    password, role: "admin" as const,
+    password: hashPassword(password), role: "admin" as const,
     permissions: [...ALL_PERMISSIONS],
     status: "active" as const,
     companyId: id,
@@ -75,5 +77,6 @@ export async function POST(req: NextRequest) {
   tenant.users.push(user);
   await saveTenantData(id, tenant);
 
-  return NextResponse.json({ company, user });
+  const safeUser = sanitizeUser(user);
+  return NextResponse.json({ company, user: safeUser });
 }

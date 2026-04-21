@@ -27,9 +27,9 @@ export async function POST(req: NextRequest) {
   if (!tenantRecord) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
-
   const { companyId, user } = tenantRecord;
-  if (user.password !== password) {
+  // verify password using scrypt/timing-safe compare (supports legacy plaintext)
+  if (!verifyPassword(password, user.password)) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
   if (user.status !== "active") {

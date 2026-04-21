@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadTenantData, saveTenantData } from "@/lib/server/storage";
+import { sanitizeTenantForClient } from "@/lib/server/sanitize";
 import { requireCompanyAccess } from "@/lib/server/auth";
 
 export async function GET(req: NextRequest, { params }: { params: { companyId: string } }) {
@@ -7,7 +8,8 @@ export async function GET(req: NextRequest, { params }: { params: { companyId: s
   if (auth.error) return auth.error;
 
   const data = await loadTenantData(params.companyId);
-  return NextResponse.json(data);
+  const safe = sanitizeTenantForClient(data);
+  return NextResponse.json(safe);
 }
 
 export async function POST(req: NextRequest, { params }: { params: { companyId: string } }) {

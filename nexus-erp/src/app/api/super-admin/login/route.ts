@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData } from "@/lib/server/storage";
 import { signToken } from "@/lib/server/jwt";
+import { verifyPassword } from "@/lib/server/password";
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json();
@@ -9,8 +10,8 @@ export async function POST(req: NextRequest) {
   }
 
   const db = await loadSaaSData();
-  const admin = db.superAdmins.find(a => a.email === email && a.password === password);
-  if (!admin) {
+  const admin = db.superAdmins.find((a) => a.email === email);
+  if (!admin || !verifyPassword(password, admin.password)) {
     return NextResponse.json({ error: "بيانات الدخول غير صحيحة" }, { status: 401 });
   }
 

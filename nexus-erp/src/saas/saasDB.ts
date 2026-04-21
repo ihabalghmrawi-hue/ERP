@@ -77,8 +77,9 @@ export const SaaSDB = {
     if (db.superAdmins.find(a => a.email === email)) {
       throw new Error("البريد الإلكتروني مستخدم بالفعل");
     }
+    // For local client storage we avoid persisting plain passwords.
     const admin: SuperAdmin = {
-      id: uid(), name, email, password,
+      id: uid(), name, email, password: "",
       role: "superadmin", createdAt: now(), lastLogin: now(),
     };
     db.superAdmins.push(admin);

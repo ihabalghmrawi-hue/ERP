@@ -4,6 +4,8 @@ import { requirePermission } from "@/lib/server/auth";
 import { uid } from "@/lib/server/uid";
 import { User } from "@/lib/db/database";
 import { getDefaultPermissions, UserRole } from "@/lib/engine/permissions";
+import { hashPassword } from "@/lib/server/password";
+import { sanitizeUser } from "@/lib/server/sanitize";
 
 export async function POST(req: NextRequest) {
   const auth = requirePermission(req, "manage_users");
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
     id: uid(),
     name,
     email,
-    password,
+    password: hashPassword(password),
     role,
     permissions: customPermissions ?? getDefaultPermissions(role as UserRole),
     status: "active",
@@ -52,5 +54,6 @@ export async function POST(req: NextRequest) {
   tenant.users.push(user);
   await saveTenantData(targetCompanyId, tenant);
 
-  return NextResponse.json({ user });
+  const safeUser = sanitizeUser(user);
+  return NextResponse.json({ user: safeUser });
 }

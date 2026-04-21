@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, saveSaaSData } from "@/lib/server/storage";
+import { hashPassword } from "@/lib/server/password";
+import { sanitizeUser } from "@/lib/server/sanitize";
 
 function uid() {
   return Math.random().toString(36).slice(2, 12);
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
     id: uid(),
     name,
     email,
-    password,
+    password: hashPassword(password),
     role: "superadmin" as const,
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
@@ -34,7 +36,8 @@ export async function POST(req: NextRequest) {
   db.superAdmins.push(admin);
   await saveSaaSData(db);
 
-  return NextResponse.json({ valid: true, admin });
+  const safeAdmin = sanitizeUser(admin);
+  return NextResponse.json({ valid: true, admin: safeAdmin });
 }
 
 export async function GET() {

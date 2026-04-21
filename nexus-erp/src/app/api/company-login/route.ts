@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, loadTenantData, saveTenantData } from "@/lib/server/storage";
 import { signToken } from "@/lib/server/jwt";
+import { verifyPassword } from "@/lib/server/password";
+import { sanitizeTenantForClient, sanitizeUser } from "@/lib/server/sanitize";
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json();
@@ -17,13 +19,14 @@ export async function POST(req: NextRequest) {
 
   if (company) {
     tenantData = await loadTenantData(company.id);
-    user = tenantData.users.find(u => u.email === email && u.password === password);
+    const candidate = tenantData.users.find((u) => u.email === email);
+    if (candidate && verifyPassword(password, candidate.password)) user = candidate;
   } else {
     // Search by user email across all companies
     for (const c of saas.companies) {
       const tenant = await loadTenantData(c.id);
-      const u = tenant.users.find(u => u.email === email && u.password === password);
-      if (u) { company = c; tenantData = tenant; user = u; break; }
+      const candidate = tenant.users.find((u) => u.email === email);
+      if (candidate && verifyPassword(password, candidate.password)) { company = c; tenantData = tenant; user = candidate; break; }
     }
   }
 
@@ -46,5 +49,8 @@ export async function POST(req: NextRequest) {
     permissions: user.permissions,
   });
 
-  return NextResponse.json({ company, user, tenantData, token });
+  // sanitize tenant data and user before returning to client
+  const safeTenant = sanitizeTenantForClient(tenantData) as any;
+  const safeUser = sanitizeUser(user) as any;
+  return NextResponse.json({ company, user: safeUser, tenantData: safeTenant, token });
 }
