@@ -2,10 +2,12 @@ import { Pool } from "pg";
 import { SaaSDatabase } from "@/saas/types";
 import { DatabaseState, User, createInitialDatabaseState } from "@/lib/db/database";
 import { redis, SAAS_KEY, tenantKey } from "./redis";
+import { runMigrations } from "./migrate";
 
 // ─── PostgreSQL pool (lazy, only when DATABASE_URL is set) ────
 let _pool: Pool | null = null;
 let _pgReady = false;
+let _migrationsRan = false;
 
 function getPool(): Pool | null {
   if (_pgReady) return _pool;
@@ -19,6 +21,13 @@ function getPool(): Pool | null {
     _pgReady = true;
   }
   return _pool;
+}
+
+async function ensureMigrated(): Promise<void> {
+  if (_migrationsRan) return;
+  if (!getPool()) return; // no DB configured
+  _migrationsRan = true;
+  await runMigrations();
 }
 
 async function pgQuery(sql: string, params?: any[]): Promise<any[] | null> {
@@ -43,6 +52,7 @@ const DEFAULT_SAAS: SaaSDatabase = {
 // ─── SaaS global state ────────────────────────────────────────
 
 export async function loadSaaSData(): Promise<SaaSDatabase> {
+  await ensureMigrated();
   // 1. Try PostgreSQL
   const rows = await pgQuery(`SELECT data FROM erp_saas_state WHERE id = 1`);
   if (rows && rows.length > 0 && rows[0].data) return rows[0].data as SaaSDatabase;
