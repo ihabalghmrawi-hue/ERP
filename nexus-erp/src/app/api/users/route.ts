@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/server/auth";
 import { uid } from "@/lib/server/uid";
 import { User } from "@/lib/db/database";
 import { getDefaultPermissions, UserRole } from "@/lib/engine/permissions";
-import { hashPassword } from "@/lib/server/password";
+import { hashPassword, validatePasswordStrength } from "@/lib/server/password";
 import { sanitizeUser } from "@/lib/server/sanitize";
 
 export async function POST(req: NextRequest) {
@@ -17,6 +17,11 @@ export async function POST(req: NextRequest) {
 
   if (!name || !email || !password || !role) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+  }
+
+  const pwError = validatePasswordStrength(password);
+  if (pwError) {
+    return NextResponse.json({ error: pwError }, { status: 400 });
   }
 
   if (role === "superadmin") {

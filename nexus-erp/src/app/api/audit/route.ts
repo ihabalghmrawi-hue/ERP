@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query as pgQuery } from "@/lib/server/postgres";
+import { getAuthPayload } from "@/lib/server/auth";
 import crypto from "crypto";
 
 function computeHash(payload: any) {
@@ -11,6 +12,12 @@ function computeHash(payload: any) {
 }
 
 export async function POST(req: NextRequest) {
+  // Only authenticated users can write audit entries
+  const auth = getAuthPayload(req);
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const {
@@ -60,6 +67,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // Only admins and superadmins can read audit logs
+  const auth = getAuthPayload(req);
+  if (!auth || (auth.role !== "superadmin" && auth.role !== "admin")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));

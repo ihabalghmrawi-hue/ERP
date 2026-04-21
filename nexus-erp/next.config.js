@@ -6,6 +6,18 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  async redirects() {
+    if (process.env.NODE_ENV !== "production") return [];
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "header", key: "x-forwarded-proto", value: "http" }],
+        destination: `https://${process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "") || "localhost"}/:path*`,
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

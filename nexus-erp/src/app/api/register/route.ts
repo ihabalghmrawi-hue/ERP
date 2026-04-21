@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSaaSData, saveSaaSData, saveTenantData, loadTenantData } from "@/lib/server/storage";
 import { createInitialDatabaseState } from "@/lib/db/database";
-import { hashPassword } from "@/lib/server/password";
+import { hashPassword, validatePasswordStrength } from "@/lib/server/password";
 import { sanitizeUser } from "@/lib/server/sanitize";
 import { PlanId, Subscription, SubscriptionStatus } from "@/saas/types";
 import { ALL_PERMISSIONS } from "@/lib/engine/permissions";
@@ -18,8 +18,9 @@ export async function POST(req: NextRequest) {
   if (!companyName || !email || !password || !ownerName || !country) {
     return NextResponse.json({ error: "جميع الحقول المطلوبة يجب تعبئتها" }, { status: 400 });
   }
-  if (password.length < 6) {
-    return NextResponse.json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }, { status: 400 });
+  const pwError = validatePasswordStrength(password);
+  if (pwError) {
+    return NextResponse.json({ error: pwError }, { status: 400 });
   }
 
   const saas = await loadSaaSData();
