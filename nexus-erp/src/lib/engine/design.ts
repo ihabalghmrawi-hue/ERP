@@ -658,4 +658,41 @@ export const GLOBAL_CSS = `
     animation: fadeIn 0.14s ease forwards;
     transform-origin: top;
   }
+
+  /* ── Inline editable cells ── */
+  [data-editable-cell] {
+    cursor: text;
+    position: relative;
+    transition: background 0.1s ease;
+  }
+  [data-editable-cell]:hover {
+    background: ${C.accentLight} !important;
+  }
+  [data-editable-cell]::after {
+    content: '';
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'/%3E%3Cpath d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: contain;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+  }
+  [data-editable-cell]:hover::after { opacity: 0.6; }
+
+  /* ── Bulk selection highlight ── */
+  tr[style*="accent08"] td,
+  tr[data-selected] td {
+    background: ${C.accentLight} !important;
+  }
+
+  /* ── Skeleton animation delay support ── */
+  .skeleton[style*="animationDelay"] {
+    animation-fill-mode: both;
+  }
 `;

@@ -6,14 +6,15 @@ import { AuthContext } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/useToast";
 import { DB, User } from "@/lib/db/database";
 import { Lang } from "@/lib/i18n/translations";
-import { S, GLOBAL_CSS } from "@/lib/engine/design";
+import { S, C, GLOBAL_CSS } from "@/lib/engine/design";
 import { hasPermission } from "@/lib/engine/permissions";
+import { PendingActionProvider, usePendingAction, QuickActionType } from "@/lib/engine/pending-action";
 
-import { AuthScreen }   from "./AuthScreen";
+import { AuthScreen }    from "./AuthScreen";
 import { Sidebar, NAV_ICONS } from "./Sidebar";
-import { Topbar }             from "./Topbar";
-import { Toast }              from "@/components/ui/Toast";
-import { CommandPalette, PaletteCommand } from "@/components/ui/CommandPalette";
+import { Topbar }        from "./Topbar";
+import { Toast }         from "@/components/ui/Toast";
+import { CommandPalette, PaletteCommand, CommandKind } from "@/components/ui/CommandPalette";
 
 import { Dashboard }  from "@/components/modules/Dashboard";
 import { Sales }      from "@/components/modules/Sales";
@@ -32,20 +33,42 @@ import { Reconciliation } from "@/components/modules/Reconciliation";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
-  | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings" | "pos" | "audit_log"
-  | "reconciliation";
+  | "customers" | "suppliers" | "accounting" | "reports" | "users"
+  | "settings" | "pos" | "audit_log" | "reconciliation";
 
-export function ERPShell() {
+// ── SVG icons for action commands ─────────────────────────────────────────────
+const PlusIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+);
+
+// Page → quick-action type mapping
+const ACTION_PAGE_MAP: Record<QuickActionType, PageId> = {
+  new_sale_invoice:    "sales",
+  new_purchase_invoice:"purchases",
+  new_customer:        "customers",
+  new_supplier:        "suppliers",
+  new_product:         "inventory",
+  new_payment:         "treasury",
+  new_journal_entry:   "accounting",
+};
+
+// ── Inner shell (has access to PendingActionContext) ──────────────────────────
+function ERPShellInner() {
   const [lang, setLang]         = useState<Lang>(() => (DB.get().settings.lang as Lang) || "ar");
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [page, setPage]         = useState<PageId>("dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { toasts, addToast }    = useToast();
+  const { dispatch }            = usePendingAction();
 
   const t   = useCallback(createTranslator(lang), [lang]);
   const dir = lang === "ar" ? "rtl" : "ltr";
+  const isAr = lang === "ar";
 
-  // ⌘K / Ctrl+K global handler
+  // ── Global keyboard shortcuts ───────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return;
     const handler = (e: KeyboardEvent) => {
@@ -69,37 +92,101 @@ export function ERPShell() {
     DB.save();
   };
 
+  // ── Palette command selection ───────────────────────────────────────────────
+  const handlePaletteSelect = (id: string, kind: CommandKind) => {
+    if (kind === "action") {
+      const actionType = id as QuickActionType;
+      const targetPage = ACTION_PAGE_MAP[actionType];
+      if (targetPage) {
+        dispatch({ type: actionType });
+        handleNavigate(targetPage);
+      }
+    } else {
+      handleNavigate(id as PageId);
+    }
+    setPaletteOpen(false);
+  };
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
   const NAV_LABELS: Record<PageId, string> = {
     dashboard: t("dashboard"), sales: t("sales"), purchases: t("purchases"),
     inventory: t("inventory"), treasury: t("treasury"), customers: t("customers"),
     suppliers: t("suppliers"), accounting: t("accounting"), reports: t("reports"),
     users: t("users"), settings: t("settings"), pos: "POS",
-    audit_log: "سجل التدقيق", reconciliation: "تسوية البنك",
+    audit_log: isAr ? "سجل التدقيق" : "Audit Log",
+    reconciliation: isAr ? "تسوية البنك" : "Reconciliation",
   };
 
-  /* ── Command palette items ─────────────────── */
-  const ALL_COMMANDS: (PaletteCommand & { perm: string; section: string })[] = [
-    { id: "dashboard",     label: t("dashboard"),    sublabel: t("overview"),    perm: "view_dashboard",  section: t("overview"),    icon: NAV_ICONS.dashboard },
-    { id: "pos",           label: "نقطة البيع",      sublabel: t("overview"),    perm: "access_pos",      section: t("overview"),    icon: NAV_ICONS.pos },
-    { id: "sales",         label: t("sales"),         sublabel: t("operations"),  perm: "view_sales",      section: t("operations"),  icon: NAV_ICONS.sales },
-    { id: "purchases",     label: t("purchases"),     sublabel: t("operations"),  perm: "view_purchases",  section: t("operations"),  icon: NAV_ICONS.purchases },
-    { id: "inventory",     label: t("inventory"),     sublabel: t("operations"),  perm: "view_inventory",  section: t("operations"),  icon: NAV_ICONS.inventory },
-    { id: "treasury",      label: t("treasury"),      sublabel: t("operations"),  perm: "view_treasury",   section: t("operations"),  icon: NAV_ICONS.treasury },
-    { id: "customers",     label: t("customers"),     sublabel: t("masterData"),  perm: "view_customers",  section: t("masterData"),  icon: NAV_ICONS.customers },
-    { id: "suppliers",     label: t("suppliers"),     sublabel: t("masterData"),  perm: "view_suppliers",  section: t("masterData"),  icon: NAV_ICONS.suppliers },
-    { id: "accounting",    label: t("accounting"),    sublabel: t("finance"),     perm: "view_accounting", section: t("finance"),     icon: NAV_ICONS.accounting },
-    { id: "reports",       label: t("reports"),       sublabel: t("finance"),     perm: "view_reports",    section: t("finance"),     icon: NAV_ICONS.reports },
-    { id: "reconciliation",label: "تسوية البنك",     sublabel: t("finance"),     perm: "manage_treasury", section: t("finance"),     icon: NAV_ICONS.reconciliation },
-    { id: "users",         label: t("users"),          sublabel: t("system"),      perm: "manage_users",    section: t("system"),      icon: NAV_ICONS.users },
-    { id: "audit_log",     label: "سجل التدقيق",    sublabel: t("system"),      perm: "manage_users",    section: t("system"),      icon: NAV_ICONS.audit_log },
-    { id: "settings",      label: t("settings"),      sublabel: t("system"),      perm: "manage_settings", section: t("system"),      icon: NAV_ICONS.settings },
-  ];
+  // ── Command palette items ───────────────────────────────────────────────────
+  const ACTION_COMMANDS: PaletteCommand[] = ([
+    {
+      id: "new_sale_invoice",
+      label: isAr ? "فاتورة مبيعات جديدة" : "New Sales Invoice",
+      sublabel: isAr ? "إنشاء فاتورة بيع" : "Create a sale",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.success,
+    },
+    {
+      id: "new_purchase_invoice",
+      label: isAr ? "فاتورة مشتريات جديدة" : "New Purchase Invoice",
+      sublabel: isAr ? "تسجيل فاتورة مورد" : "Record a purchase",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.warning,
+    },
+    {
+      id: "new_customer",
+      label: isAr ? "عميل جديد" : "New Customer",
+      sublabel: isAr ? "إضافة عميل للدفتر" : "Add to contact book",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.accentMid,
+    },
+    {
+      id: "new_supplier",
+      label: isAr ? "مورد جديد" : "New Supplier",
+      sublabel: isAr ? "إضافة مورد للدفتر" : "Add to supplier list",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.purple,
+    },
+    {
+      id: "new_product",
+      label: isAr ? "منتج جديد" : "New Product",
+      sublabel: isAr ? "إضافة منتج للمخزون" : "Add to inventory",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.gold,
+    },
+    {
+      id: "new_payment",
+      label: isAr ? "تسجيل دفعة" : "Record Payment",
+      sublabel: isAr ? "إيداع أو سحب" : "Deposit or withdrawal",
+      icon: <PlusIcon />, kind: "action" as const, accent: C.success,
+    },
+  ] as PaletteCommand[]).filter(cmd => {
+    const page = ACTION_PAGE_MAP[cmd.id as QuickActionType];
+    const permMap: Record<PageId, string> = {
+      sales: "view_sales", purchases: "view_purchases", customers: "view_customers",
+      suppliers: "view_suppliers", inventory: "view_inventory", treasury: "view_treasury",
+      accounting: "view_accounting", reports: "view_reports", users: "manage_users",
+      settings: "manage_settings", dashboard: "view_dashboard", pos: "access_pos",
+      audit_log: "manage_users", reconciliation: "manage_treasury",
+    };
+    return hasPermission(authUser, permMap[page] as any);
+  });
 
-  const paletteCommands: PaletteCommand[] = ALL_COMMANDS
-    .filter(cmd => hasPermission(authUser, cmd.perm as any))
-    .map(({ id, label, sublabel, icon }) => ({ id, label, sublabel, icon }));
+  const NAV_COMMANDS: PaletteCommand[] = [
+    { id: "dashboard",      label: t("dashboard"),    sublabel: t("overview"),    perm: "view_dashboard",  icon: NAV_ICONS.dashboard },
+    { id: "pos",            label: "نقطة البيع",      sublabel: t("overview"),    perm: "access_pos",      icon: NAV_ICONS.pos },
+    { id: "sales",          label: t("sales"),         sublabel: t("operations"),  perm: "view_sales",      icon: NAV_ICONS.sales },
+    { id: "purchases",      label: t("purchases"),     sublabel: t("operations"),  perm: "view_purchases",  icon: NAV_ICONS.purchases },
+    { id: "inventory",      label: t("inventory"),     sublabel: t("operations"),  perm: "view_inventory",  icon: NAV_ICONS.inventory },
+    { id: "treasury",       label: t("treasury"),      sublabel: t("operations"),  perm: "view_treasury",   icon: NAV_ICONS.treasury },
+    { id: "customers",      label: t("customers"),     sublabel: t("masterData"),  perm: "view_customers",  icon: NAV_ICONS.customers },
+    { id: "suppliers",      label: t("suppliers"),     sublabel: t("masterData"),  perm: "view_suppliers",  icon: NAV_ICONS.suppliers },
+    { id: "accounting",     label: t("accounting"),    sublabel: t("finance"),     perm: "view_accounting", icon: NAV_ICONS.accounting },
+    { id: "reports",        label: t("reports"),       sublabel: t("finance"),     perm: "view_reports",    icon: NAV_ICONS.reports },
+    { id: "reconciliation", label: isAr ? "تسوية البنك" : "Reconciliation", sublabel: t("finance"), perm: "manage_treasury", icon: NAV_ICONS.reconciliation },
+    { id: "users",          label: t("users"),         sublabel: t("system"),      perm: "manage_users",    icon: NAV_ICONS.users },
+    { id: "audit_log",      label: isAr ? "سجل التدقيق" : "Audit Log", sublabel: t("system"), perm: "manage_users", icon: NAV_ICONS.audit_log },
+    { id: "settings",       label: t("settings"),      sublabel: t("system"),      perm: "manage_settings", icon: NAV_ICONS.settings },
+  ].filter((cmd: any) => hasPermission(authUser, cmd.perm));
 
-  /* ── Page content ─────────────────────────── */
+  const paletteCommands: PaletteCommand[] = [...ACTION_COMMANDS, ...NAV_COMMANDS];
+
+  // ── Pages ────────────────────────────────────────────────────────────────────
   const PAGES: Record<PageId, React.ReactNode> = {
     dashboard:  <Dashboard  addToast={addToast} />,
     sales:      <Sales      addToast={addToast} />,
@@ -120,7 +207,6 @@ export function ERPShell() {
   return (
     <LangContext.Provider value={{ lang, t, dir }}>
       <AuthContext.Provider value={{ user: authUser, logout: handleLogout, can: (p) => hasPermission(authUser, p) }}>
-        {/* ── Global styles ──────────────────────── */}
         <style>{GLOBAL_CSS + `\nhtml, body { direction: ${dir}; }`}</style>
 
         {!authUser ? (
@@ -133,7 +219,6 @@ export function ERPShell() {
                 pageLabel={NAV_LABELS[page]}
                 onOpenPalette={() => setPaletteOpen(true)}
               />
-              {/* key= triggers .page-enter re-animation on every navigation */}
               <div key={page} className="page-enter" style={S.content}>
                 {PAGES[page]}
               </div>
@@ -141,17 +226,25 @@ export function ERPShell() {
           </div>
         )}
 
-        {/* ── Command Palette ─────────────────────── */}
         <CommandPalette
           open={paletteOpen}
           onClose={() => setPaletteOpen(false)}
-          onSelect={id => handleNavigate(id as PageId)}
+          onSelect={handlePaletteSelect}
           commands={paletteCommands}
-          placeholder={dir === "rtl" ? "بحث في الوحدات..." : "Search modules..."}
+          placeholder={isAr ? "بحث أو إجراء سريع..." : "Search or quick action..."}
         />
 
         <Toast toasts={toasts} />
       </AuthContext.Provider>
     </LangContext.Provider>
+  );
+}
+
+// ── Public export (wraps inner in PendingActionProvider) ──────────────────────
+export function ERPShell() {
+  return (
+    <PendingActionProvider>
+      <ERPShellInner />
+    </PendingActionProvider>
   );
 }
