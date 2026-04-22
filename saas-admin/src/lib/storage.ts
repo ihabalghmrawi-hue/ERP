@@ -17,7 +17,8 @@ function getRedis(): Redis | null {
   } catch { return null; }
 }
 
-const SAAS_KEY = "saas:global";
+// Must match the key used by nexus-erp (src/lib/server/redis.ts → SAAS_KEY)
+const SAAS_KEY = "saas:data";
 
 // ── PostgreSQL ────────────────────────────────────────────────
 let _pool: Pool | null = null;
@@ -103,7 +104,7 @@ async function bootstrapSuperAdmin(db: SaaSDatabase): Promise<void> {
 export async function loadTenantData(companyId: string): Promise<any> {
   // PostgreSQL
   const rows = await pgQuery(
-    "SELECT data FROM erp_tenant_data WHERE company_id = $1",
+    "SELECT data FROM erp_tenant_state WHERE company_id = $1",
     [companyId]
   );
   if (rows && rows[0]?.data) return rows[0].data;
@@ -120,7 +121,7 @@ export async function loadTenantData(companyId: string): Promise<any> {
 export async function saveTenantData(companyId: string, data: any): Promise<void> {
   const json = JSON.stringify(data);
   await pgQuery(
-    `INSERT INTO erp_tenant_data (company_id, data, updated_at)
+    `INSERT INTO erp_tenant_state (company_id, data, updated_at)
      VALUES ($1, $2::jsonb, now())
      ON CONFLICT (company_id) DO UPDATE SET data = $2::jsonb, updated_at = now()`,
     [companyId, json]
