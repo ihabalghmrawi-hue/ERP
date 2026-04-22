@@ -70,6 +70,9 @@ export function Settings({ lang, setLang }: Props) {
   const db = DB.get();
   const [form, setForm] = useState({ ...db.settings });
   const [saved, setSaved] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleSave = () => {
     Object.assign(db.settings, form);
@@ -78,6 +81,35 @@ export function Settings({ lang, setLang }: Props) {
     logActivity(user?.id || "", user?.name || "", "UPDATE", "Settings", "تعديل إعدادات النظام");
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail) {
+      alert("أدخل بريدًا إلكترونيًا لاختباره");
+      return;
+    }
+    setTestLoading(true);
+    try {
+      const res = await fetch("/api/email/send-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: testEmail,
+          subject: "اختبار إرسال البريد - Nexus ERP",
+          message: "هذا بريد اختبار من نظام Nexus ERP. إذا استقبلت هذه الرسالة، فإن إعدادات البريد الإلكتروني تعمل بشكل صحيح.",
+        }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+      setTimeout(() => setTestResult(null), 4000);
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : "خطأ في الاتصال",
+      });
+    } finally {
+      setTestLoading(false);
+    }
   };
 
   return (
@@ -314,6 +346,122 @@ export function Settings({ lang, setLang }: Props) {
         >
           {saved ? "تم الحفظ ✓" : "حفظ إعدادات الضريبة"}
         </button>
+      </div>
+
+      {/* Email Settings */}
+      <div style={S.card}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+          ✉️ إعدادات البريد الإلكتروني
+        </div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>
+          أدخل بيانات خادم SMTP لتفعيل إرسال البريد الإلكتروني التلقائي للموافقات والرفوضات والتنبيهات
+        </div>
+
+        <div style={S.grid(2)}>
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("smtpHost")}</label>
+            <input
+              style={S.input}
+              type="text"
+              value={(form as any).smtpHost || ""}
+              onChange={(e) => setForm({ ...form, smtpHost: e.target.value } as any)}
+              placeholder="مثال: smtp.gmail.com"
+            />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("smtpPort")}</label>
+            <input
+              style={S.input}
+              type="number"
+              value={(form as any).smtpPort || 587}
+              onChange={(e) => setForm({ ...form, smtpPort: +e.target.value } as any)}
+              placeholder="مثال: 587"
+            />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("smtpUser")}</label>
+            <input
+              style={S.input}
+              type="text"
+              value={(form as any).smtpUser || ""}
+              onChange={(e) => setForm({ ...form, smtpUser: e.target.value } as any)}
+              placeholder="بريدك الإلكتروني"
+            />
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>{t("smtpPassword")}</label>
+            <input
+              style={S.input}
+              type="password"
+              value={(form as any).smtpPassword || ""}
+              onChange={(e) => setForm({ ...form, smtpPassword: e.target.value } as any)}
+              placeholder="كلمة المرور أو App Password"
+            />
+          </div>
+        </div>
+
+        <div style={S.formGroup}>
+          <label style={S.label}>{t("smtpFrom")}</label>
+          <input
+            style={S.input}
+            type="email"
+            value={(form as any).smtpFrom || ""}
+            onChange={(e) => setForm({ ...form, smtpFrom: e.target.value } as any)}
+            placeholder="البريد الذي ستُرسل به الرسائل"
+          />
+        </div>
+
+        <div style={{ background: C.accentLight, borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, color: C.accent, marginBottom: 6 }}>💡 تلميح</div>
+          <div style={{ color: C.text, lineHeight: 1.5 }}>
+            في Gmail: استخدم بريدك الكامل كمستخدم وكلمة مرور التطبيق (App Password) بدلاً من كلمة المرور العادية.
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <label style={S.label}>اختبر الإرسال (بريد اختياري)</label>
+            <input
+              style={S.input}
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="بريد اختياري لاختبار الإرسال"
+            />
+          </div>
+          <button
+            style={{ ...S.btn("outline"), padding: "7px 16px", fontSize: 12, border: "none" }}
+            onClick={handleSendTestEmail}
+            disabled={testLoading || !testEmail}
+          >
+            {testLoading ? "⏳ جاري الإرسال..." : "✉️ اختبر"}
+          </button>
+        </div>
+
+        {testResult && (
+          <div
+            style={{
+              background: testResult.success ? C.successLight : `${C.danger}15`,
+              borderRadius: 8,
+              padding: "10px 12px",
+              marginTop: 12,
+              fontSize: 12,
+              color: testResult.success ? C.success : C.danger,
+              fontWeight: 600,
+            }}
+          >
+            {testResult.success ? "✓" : "✗"} {testResult.message}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+          <button
+            style={{ ...S.btn("primary"), padding: "10px 28px", border: "none" }}
+            onClick={handleSave}
+          >
+            {saved ? t("saved") : t("save")}
+          </button>
+        </div>
       </div>
 
       {/* System info card */}

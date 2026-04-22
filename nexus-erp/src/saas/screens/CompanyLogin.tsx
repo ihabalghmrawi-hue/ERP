@@ -46,10 +46,20 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, totpToken: totpToken || undefined }),
       });
-      const data = await res.json();
+
+      let data: any = {};
+      try { data = await res.json(); } catch {
+        setError("خطأ في الخادم — تأكد من إعداد متغيرات البيئة (Redis/Database) وأعد المحاولة.");
+        return;
+      }
 
       if (data.error === "2fa_required") { setScreen("2fa"); setLoading(false); return; }
-      if (!res.ok) { setError(data.error || "البريد أو كلمة المرور غير صحيحة"); return; }
+      if (!res.ok) {
+        if (res.status === 429) setError(data.error || "محاولات كثيرة — انتظر قليلاً وأعد المحاولة");
+        else if (res.status >= 500) setError("خطأ في الخادم (" + res.status + ") — تواصل مع المدير العام");
+        else setError(data.error || "البريد أو كلمة المرور غير صحيحة");
+        return;
+      }
 
       const { company, user, tenantData, token } = data;
       const db = SaaSDB.get();
@@ -59,7 +69,7 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
       TenantDB.save();
       onLogin(company, user, token);
     } catch {
-      setError("حدث خطأ في الاتصال بالخادم");
+      setError("تعذّر الاتصال بالخادم — تحقق من اتصالك بالإنترنت وأعد المحاولة.");
     } finally {
       setLoading(false);
     }
@@ -148,7 +158,14 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
               </button>
             </div>
 
-            {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+            {error && (
+              <div style={{
+                background: "#FEF2F2", border: "1px solid #FECACA",
+                borderRadius: 8, padding: "9px 12px",
+                color: C.danger, fontSize: 12.5,
+                marginBottom: 14, textAlign: "center", lineHeight: 1.5,
+              }}>{error}</div>
+            )}
 
             <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
               onClick={handleLogin} disabled={loading}>
@@ -183,7 +200,14 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
                 رجوع إلى تسجيل الدخول
               </button>
             </div>
-            {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+            {error && (
+              <div style={{
+                background: "#FEF2F2", border: "1px solid #FECACA",
+                borderRadius: 8, padding: "9px 12px",
+                color: C.danger, fontSize: 12.5,
+                marginBottom: 14, textAlign: "center", lineHeight: 1.5,
+              }}>{error}</div>
+            )}
             <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
               onClick={handleLogin} disabled={loading}>
               {loading ? "جارٍ التحقق..." : "تحقق"}
@@ -211,7 +235,14 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
                     onKeyDown={e => { if (e.key === "Enter") handleForgot(); }}
                     placeholder="your@company.com" autoFocus />
                 </div>
-                {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+                {error && (
+              <div style={{
+                background: "#FEF2F2", border: "1px solid #FECACA",
+                borderRadius: 8, padding: "9px 12px",
+                color: C.danger, fontSize: 12.5,
+                marginBottom: 14, textAlign: "center", lineHeight: 1.5,
+              }}>{error}</div>
+            )}
                 <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
                   onClick={handleForgot} disabled={loading}>
                   {loading ? "جارٍ الإرسال..." : "إرسال رابط الاستعادة"}
@@ -284,7 +315,14 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
                     placeholder="أعد كتابة كلمة المرور" />
                 </div>
 
-                {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</div>}
+                {error && (
+              <div style={{
+                background: "#FEF2F2", border: "1px solid #FECACA",
+                borderRadius: 8, padding: "9px 12px",
+                color: C.danger, fontSize: 12.5,
+                marginBottom: 14, textAlign: "center", lineHeight: 1.5,
+              }}>{error}</div>
+            )}
 
                 <button style={{ ...S.btn("primary"), width: "100%", padding: 12, fontSize: 14, border: "none", opacity: loading ? 0.7 : 1 }}
                   onClick={handleReset} disabled={loading}>

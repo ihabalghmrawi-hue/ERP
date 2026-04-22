@@ -5,6 +5,7 @@ import { verifyPassword, hashPassword } from "@/lib/server/password";
 import { checkRateLimit, resetRateLimit } from "@/lib/server/rateLimit";
 import { query } from "@/lib/server/postgres";
 import * as OTPAuth from "otpauth";
+import { sendEmail, createEmailLog } from "@/lib/server/sendEmail";
 
 function verifyTOTP(secret: string, token: string): boolean {
   try {
@@ -112,6 +113,42 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({ token, role: "superadmin" });
     setRefreshCookie(res, refreshToken);
+    // Fire-and-forget: notify superadmin by email if SMTP configured in env
+    (async () => {
+      try {
+        if (process.env.SMTP_HOST) {
+          const globalSettings = {
+            companyName: "SaaS",
+            taxNumber: "",
+            address: "",
+            country: "",
+            baseCurrency: "SAR",
+            fiscalYearStart: new Date().toISOString().slice(0, 10),
+            lang: "en",
+            vatEnabled: false,
+            vatRate: 0,
+            vatName: "",
+            vatInclusive: false,
+            lockedPeriods: [],
+            requireInvoiceApproval: false,
+            smtpHost: process.env.SMTP_HOST,
+            smtpPort: process.env.SMTP_PORT ? +process.env.SMTP_PORT : 587,
+            smtpUser: process.env.SMTP_USER,
+            smtpPassword: process.env.SMTP_PASSWORD || process.env.SMTP_PASS,
+            smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER,
+          } as any;
+
+          const subject = `تم تسجيل دخول جديد إلى حساب المدير (${superAdmin.email})`;
+          const body = `تم تسجيل دخول إلى الحساب من العنوان ${ip}، وكيل المستخدم: ${ua}، في ${new Date().toISOString()}`;
+          try {
+            await sendEmail(globalSettings, superAdmin.email, subject, body);
+          } catch (e) {
+            console.error("[login] failed to send superadmin login email:", e);
+          }
+        }
+      } catch (e) { /* swallow errors */ }
+    })();
+
     return res;
   }
 
@@ -164,5 +201,28 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ token, role: user.role, companyId, companyName: company.name });
   setRefreshCookie(res, refreshToken);
+  // Fire-and-forget: send login notification to tenant user using tenant SMTP settings
+  (async () => {
+    try {
+      const tenant = await loadTenantData(companyId);
+      const settings = tenant.settings as any;
+      const subject = `تم تسجيل دخول جديد لحسابك (${user.email})`;
+      const body = `تم تسجيل الدخول من ${ip} — وكيل المستخدم: ${ua} — في ${new Date().toISOString()}`;
+
+      const result = await sendEmail(settings, user.email, subject, body);
+
+      // record in tenant email log (best-effort)
+      try {
+        if (!tenant.emailLog) tenant.emailLog = [];
+        tenant.emailLog.push(createEmailLog(user.email, subject, body, "other", "login"));
+        await saveTenantData(companyId, tenant);
+      } catch (e) {
+        console.error("[login] failed to save tenant email log:", e);
+      }
+    } catch (e) {
+      /* ignore notification errors */
+    }
+  })();
+
   return res;
 }
