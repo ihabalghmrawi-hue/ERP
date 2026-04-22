@@ -1,23 +1,24 @@
-import Redis from "ioredis";
+import { Redis } from "@upstash/redis";
 import { Pool } from "pg";
 import { SaaSDatabase, SuperAdmin, Company } from "./types";
 import { hashPassword } from "./password";
 import { v4 as uuidv4 } from "uuid";
 
-// ── Redis ─────────────────────────────────────────────────────
+// ── Upstash Redis (REST API) ───────────────────────────────────
 let _redis: Redis | null = null;
 
 function getRedis(): Redis | null {
   if (_redis) return _redis;
-  const url = process.env.REDIS_URL || process.env.KV_URL;
-  if (!url) return null;
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) return null;
   try {
-    _redis = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 2 });
+    _redis = new Redis({ url, token });
     return _redis;
   } catch { return null; }
 }
 
-// Must match the key used by nexus-erp (src/lib/server/redis.ts → SAAS_KEY)
+// Must match the key used by nexus-erp
 const SAAS_KEY = "saas:data";
 
 // ── PostgreSQL ────────────────────────────────────────────────
@@ -53,11 +54,11 @@ export async function loadSaaS(): Promise<SaaSDatabase> {
   const rows = await pgQuery("SELECT data FROM erp_saas_state WHERE id = 1");
   if (rows && rows[0]?.data) return rows[0].data as SaaSDatabase;
 
-  // 2. Redis
+  // 2. Upstash Redis
   const r = getRedis();
   if (r) {
-    const raw = await r.get(SAAS_KEY).catch(() => null);
-    if (raw) return JSON.parse(raw) as SaaSDatabase;
+    const data = await r.get<SaaSDatabase>(SAAS_KEY).catch(() => null);
+    if (data) return data;
   }
 
   // 3. Fresh
@@ -79,7 +80,7 @@ export async function saveSaaS(db: SaaSDatabase): Promise<void> {
     [json]
   );
 
-  // Redis
+  // Upstash Redis
   const r = getRedis();
   if (r) await r.set(SAAS_KEY, json).catch(() => {});
 }
@@ -109,11 +110,11 @@ export async function loadTenantData(companyId: string): Promise<any> {
   );
   if (rows && rows[0]?.data) return rows[0].data;
 
-  // Redis
+  // Upstash Redis
   const r = getRedis();
   if (r) {
-    const raw = await r.get(`tenant:${companyId}`).catch(() => null);
-    if (raw) return JSON.parse(raw);
+    const data = await r.get(`tenant:${companyId}`).catch(() => null);
+    if (data) return data;
   }
   return null;
 }
