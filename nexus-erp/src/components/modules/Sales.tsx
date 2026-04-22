@@ -11,6 +11,7 @@ import { fmt, fmtDate, uid, today, logActivity, logError } from "@/lib/engine/he
 import { hasPermission, isPeriodLocked } from "@/lib/engine/permissions";
 import { zatcaQRDataURL } from "@/lib/engine/zatca";
 import { KPI }         from "@/components/ui/KPI";
+import { TenantDB } from "@/saas/tenantDB";
 import { DataTable }   from "@/components/ui/DataTable";
 import { Modal }       from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -143,6 +144,24 @@ export function Sales({ addToast }: Props) {
       setInvoices([...db.invoices]);
       logActivity(user?.id || "", user?.name || "", "APPROVE", "Sales", `اعتمد الفاتورة ${inv.id}`);
       addToast(`تم اعتماد الفاتورة ${inv.id} وتسجيلها محاسبياً`, "success");
+
+      // Notify customer by email (fire-and-forget)
+      (async () => {
+        try {
+          const cid = TenantDB.getCurrentCompanyId();
+          if (!cid) return;
+          const cust = DB.get().customers.find((c) => c.id === inv.customerId);
+          const to = cust?.email;
+          if (!to) return;
+          const subject = `تم اعتماد الفاتورة ${inv.id}`;
+          const message = `فاتورتك ${inv.id} بمبلغ ${inv.total} تم اعتمادها بتاريخ ${inv.approvedAt} بواسطة ${inv.approvedBy}.`;
+          await fetch(`/api/email/send-test?companyId=${cid}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to, subject, message }),
+          });
+        } catch (e) { /* ignore */ }
+      })();
     } catch (e: any) { addToast(e.message, "error"); }
   };
 
@@ -155,6 +174,24 @@ export function Sales({ addToast }: Props) {
     setInvoices([...db.invoices]);
     logActivity(user?.id || "", user?.name || "", "REJECT", "Sales", `رفض الفاتورة ${inv.id}`);
     addToast(`تم رفض الفاتورة ${inv.id}`, "info");
+
+    // Notify customer by email about rejection (fire-and-forget)
+    (async () => {
+      try {
+        const cid = TenantDB.getCurrentCompanyId();
+        if (!cid) return;
+        const cust = DB.get().customers.find((c) => c.id === inv.customerId);
+        const to = cust?.email;
+        if (!to) return;
+        const subject = `تم رفض الفاتورة ${inv.id}`;
+        const message = `فاتورتك ${inv.id} تم رفضها. السبب: ${inv.rejectedReason || "—"}`;
+        await fetch(`/api/email/send-test?companyId=${cid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to, subject, message }),
+        });
+      } catch (e) { /* ignore */ }
+    })();
   };
 
   const filtered = invoices.filter((inv) => inv.id.includes(search) || inv.customerName?.includes(search));

@@ -129,6 +129,25 @@ export function Users({ addToast }: Props) {
     addToast(t("userCreated"), "success");
     setShowModal(false);
     resetForm();
+
+    // Invite email (fire-and-forget)
+    (async () => {
+      try {
+        const cid = TenantDB.getCurrentCompanyId();
+        if (!cid) return;
+        if (!u.email) return;
+        const subject = `دعوة للانضمام لنظام ${DB.get().settings.companyName || "النظام"}`;
+        const message = `مرحباً ${u.name},
+تم إنشاء حساب لك في النظام. البريد: ${u.email}
+كلمة المرور المؤقتة: ${u.password}
+الرجاء تغيير كلمة المرور عند أول تسجيل دخول.`;
+        await fetch(`/api/email/send-test?companyId=${cid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: u.email, subject, message }),
+        });
+      } catch (e) { /* ignore */ }
+    })();
   };
 
   /* Permissions matrix */

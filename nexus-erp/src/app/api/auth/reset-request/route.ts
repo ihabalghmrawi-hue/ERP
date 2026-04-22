@@ -10,7 +10,8 @@
  * Always returns 200 (prevents email enumeration).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { loadSaaSData, loadTenantData } from "@/lib/server/storage";
+import { loadSaaSData, loadTenantData, saveTenantData } from "@/lib/server/storage";
+import { sendEmail, createEmailLog } from "@/lib/server/sendEmail";
 import { query } from "@/lib/server/postgres";
 import { randomBytes } from "crypto";
 import { runMigrations } from "@/lib/server/migrate";
@@ -75,12 +76,54 @@ export async function POST(req: NextRequest) {
   const appUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "";
   const resetLink = `${appUrl}/app?reset=${token}`;
 
-  // If SMTP is configured in future, send email here.
-  // For now: return token to allow admin to share out-of-band.
-  const hasSmtp = !!(process.env.SMTP_HOST);
-  if (hasSmtp) {
-    // TODO: send email
-    return NextResponse.json({ ok: true, message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني" });
+  // Try send reset email if SMTP is configured (tenant-level or global)
+  try {
+    if (companyId) {
+      const tenant = await loadTenantData(companyId);
+      if (tenant?.settings?.smtpHost) {
+        const subject = `رابط إعادة تعيين كلمة المرور`;
+        const message = `مرحباً، استخدم هذا الرابط لإعادة تعيين كلمة المرور: ${resetLink} (صالح لمدة ساعة)`;
+        const result = await sendEmail(tenant.settings as any, normalEmail, subject, message, `<p>${message}</p>`);
+        if (result.success) {
+          if (!tenant.emailLog) tenant.emailLog = [];
+          tenant.emailLog.push(createEmailLog(normalEmail, subject, message, "auth", "reset-request"));
+          try { await saveTenantData(companyId, tenant); } catch {}
+          return NextResponse.json({ ok: true, message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني" });
+        }
+      }
+    }
+
+    // Global env fallback
+    if (process.env.SMTP_HOST) {
+      const globalSettings = {
+        companyName: "SaaS",
+        taxNumber: "",
+        address: "",
+        country: "",
+        baseCurrency: "SAR",
+        fiscalYearStart: new Date().toISOString().slice(0, 10),
+        lang: "en",
+        vatEnabled: false,
+        vatRate: 0,
+        vatName: "",
+        vatInclusive: false,
+        lockedPeriods: [],
+        requireInvoiceApproval: false,
+        smtpHost: process.env.SMTP_HOST,
+        smtpPort: process.env.SMTP_PORT ? +process.env.SMTP_PORT : 587,
+        smtpUser: process.env.SMTP_USER,
+        smtpPassword: process.env.SMTP_PASSWORD || process.env.SMTP_PASS,
+        smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER,
+      } as any;
+      const subject = `رابط إعادة تعيين كلمة المرور`;
+      const message = `مرحباً، استخدم هذا الرابط لإعادة تعيين كلمة المرور: ${resetLink} (صالح لمدة ساعة)`;
+      const result = await sendEmail(globalSettings, normalEmail, subject, message, `<p>${message}</p>`);
+      if (result.success) {
+        return NextResponse.json({ ok: true, message: "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني" });
+      }
+    }
+  } catch (e) {
+    // best-effort: continue to return token when SMTP fails
   }
 
   // No SMTP — return token so admin can share it manually

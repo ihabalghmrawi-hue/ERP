@@ -246,6 +246,12 @@ export interface AppSettings {
   vatInclusive: boolean;
   lockedPeriods: string[];        // ["2024-01", "2024-02"] — prevents edits in closed months
   requireInvoiceApproval: boolean; // if true, credit invoices need approval before posting
+  // Email settings
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPassword?: string;
+  smtpFrom?: string;
 }
 
 export interface EmailLog {
