@@ -9,14 +9,17 @@ function guard(req: NextRequest) {
   return null;
 }
 
+type RouteContext = { params: Promise<{ id: string }> };
+
 // GET /api/companies/[id]
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: RouteContext) {
   const err = guard(req); if (err) return err;
+  const { id } = await ctx.params;
   const db = await loadSaaS();
-  const company = db.companies.find(c => c.id === params.id);
+  const company = db.companies.find(c => c.id === id);
   if (!company) return NextResponse.json({ error: "الشركة غير موجودة" }, { status: 404 });
 
-  const tenant = await loadTenantData(params.id);
+  const tenant = await loadTenantData(id);
   return NextResponse.json({
     company,
     stats: {
@@ -29,11 +32,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // PATCH /api/companies/[id]
-// body: { action: "suspend"|"activate"|"renew"|"extend_trial"|"change_plan", ...extras }
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const err = guard(req); if (err) return err;
+  const { id } = await ctx.params;
   const db = await loadSaaS();
-  const company = db.companies.find(c => c.id === params.id);
+  const company = db.companies.find(c => c.id === id);
   if (!company) return NextResponse.json({ error: "الشركة غير موجودة" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
@@ -95,10 +98,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 // DELETE /api/companies/[id]
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, ctx: RouteContext) {
   const err = guard(req); if (err) return err;
+  const { id } = await ctx.params;
   const db = await loadSaaS();
-  const idx = db.companies.findIndex(c => c.id === params.id);
+  const idx = db.companies.findIndex(c => c.id === id);
   if (idx === -1) return NextResponse.json({ error: "الشركة غير موجودة" }, { status: 404 });
   db.companies.splice(idx, 1);
   await saveSaaS(db);
