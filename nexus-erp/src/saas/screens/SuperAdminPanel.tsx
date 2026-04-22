@@ -15,7 +15,7 @@ interface Props {
   addToast: (msg: string, type?: "success" | "error" | "info") => void;
 }
 
-type AdminPage = "dashboard" | "companies" | "subscriptions" | "new_company" | "ops";
+type AdminPage = "dashboard" | "companies" | "subscriptions" | "new_company" | "ops" | "profile";
 
 export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
   const [page, setPage] = useState<AdminPage>("dashboard");
@@ -31,6 +31,7 @@ export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
     { id: "companies"     as AdminPage, label: "الشركات",            icon: "🏢" },
     { id: "subscriptions" as AdminPage, label: "الاشتراكات",         icon: "💳" },
     { id: "new_company"   as AdminPage, label: "شركة جديدة",         icon: "➕" },
+    { id: "profile"       as AdminPage, label: "إعدادات حسابي",       icon: "⚙️" },
   ];
 
   return (
@@ -69,6 +70,7 @@ export function SuperAdminPanel({ admin, onLogout, addToast }: Props) {
           {page === "companies"  && <CompaniesManager companies={db.companies} addToast={addToast} onRefresh={rerender} />}
           {page === "subscriptions" && <SubscriptionsManager companies={db.companies} addToast={addToast} onRefresh={rerender} />}
           {page === "new_company" && <NewCompanyForm addToast={addToast} onCreated={() => { setPage("companies"); rerender(); }} />}
+          {page === "profile"     && <AdminProfile admin={admin} addToast={addToast} />}
         </div>
       </div>
     </div>
@@ -423,6 +425,102 @@ function NewCompanyForm({ addToast, onCreated }: { addToast: any; onCreated: () 
       </div>
       {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>{error}</div>}
       <button style={{ ...S.btn("primary"), border: "none", padding: "10px 28px" }} onClick={handle}>إنشاء الشركة</button>
+    </div>
+  );
+}
+
+// ── Admin Profile ──────────────────────────────────────────
+
+function AdminProfile({ admin, addToast }: { admin: SuperAdmin; addToast: any }) {
+  const [email, setEmail]           = useState(admin.email);
+  const [currentPw, setCurrentPw]   = useState("");
+  const [newPw, setNewPw]           = useState("");
+  const [confirmPw, setConfirmPw]   = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+
+  const token = SaaSDB.getSession()?.token ?? "";
+
+  const handleSave = async () => {
+    setError("");
+    if (!currentPw) { setError("أدخل كلمة المرور الحالية للتحقق"); return; }
+    if (newPw && newPw.length < 8) { setError("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"); return; }
+    if (newPw && newPw !== confirmPw) { setError("كلمتا المرور الجديدتان غير متطابقتان"); return; }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), currentPassword: currentPw, newPassword: newPw || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "حدث خطأ"); return; }
+      addToast("تم تحديث البيانات بنجاح ✅", "success");
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      admin.email = data.email;
+    } catch {
+      setError("تعذّر الاتصال بالخادم");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 480 }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 24 }}>إعدادات حساب المدير العام</div>
+
+      <div style={{ background: C.surface, borderRadius: 12, padding: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, marginBottom: 18, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+          البريد الإلكتروني
+        </div>
+        <div style={S.formGroup}>
+          <label style={S.label}>الإيميل الجديد</label>
+          <input style={S.input} type="email" value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="admin@example.com" />
+        </div>
+      </div>
+
+      <div style={{ background: C.surface, borderRadius: 12, padding: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.textSec, marginBottom: 18, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+          كلمة المرور
+        </div>
+        <div style={S.formGroup}>
+          <label style={S.label}>كلمة المرور الحالية *</label>
+          <input style={S.input} type="password" value={currentPw}
+            onChange={e => setCurrentPw(e.target.value)}
+            placeholder="••••••••" />
+        </div>
+        <div style={S.formGroup}>
+          <label style={S.label}>كلمة المرور الجديدة (اختياري)</label>
+          <input style={S.input} type="password" value={newPw}
+            onChange={e => setNewPw(e.target.value)}
+            placeholder="8 أحرف على الأقل" />
+        </div>
+        {newPw && (
+          <div style={S.formGroup}>
+            <label style={S.label}>تأكيد كلمة المرور الجديدة</label>
+            <input style={S.input} type="password" value={confirmPw}
+              onChange={e => setConfirmPw(e.target.value)}
+              placeholder="أعد كتابة كلمة المرور" />
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div style={{
+          background: "#FEF2F2", border: "1px solid #FECACA",
+          borderRadius: 8, padding: "10px 14px", color: C.danger,
+          fontSize: 12.5, marginBottom: 16,
+        }}>{error}</div>
+      )}
+
+      <button
+        style={{ ...S.btn("primary"), border: "none", padding: "11px 32px", fontSize: 14, opacity: loading ? 0.7 : 1 }}
+        onClick={handleSave} disabled={loading}>
+        {loading ? "جارٍ الحفظ..." : "حفظ التغييرات"}
+      </button>
     </div>
   );
 }
