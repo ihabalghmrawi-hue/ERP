@@ -85,5 +85,7 @@ export function createEmailLog(
     body,
     relatedType: relatedType as any,
     relatedId,
+    status: "delivered",
+    createdBy: "system",
   };
 }
