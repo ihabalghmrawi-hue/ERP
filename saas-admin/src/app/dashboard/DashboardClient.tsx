@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Company, PLANS, PlanId } from "@/lib/types";
 
-type Tab = "overview" | "companies" | "new_company" | "profile";
+type Tab = "overview" | "companies" | "new_company" | "profile" | "reset_admin";
 
 const C = {
   sidebar: "#0F172A", sidebarBorder: "rgba(255,255,255,0.07)",
@@ -132,7 +132,8 @@ export function DashboardClient({ adminName, adminEmail }: { adminName: string; 
     { id: "overview",     label: "لوحة التحكم",  icon: "📊" },
     { id: "companies",    label: "الشركات",       icon: "🏢" },
     { id: "new_company",  label: "شركة جديدة",    icon: "➕" },
-    { id: "profile",      label: "إعدادات حسابي", icon: "⚙️" },
+    { id: "profile",      label: "إعدادات حسابي",      icon: "⚙️" },
+    { id: "reset_admin",  label: "إعادة تعيين المدير",  icon: "🔑" },
   ];
 
   return (
@@ -195,7 +196,8 @@ export function DashboardClient({ adminName, adminEmail }: { adminName: string; 
           {tab === "overview"    && <OverviewTab />}
           {tab === "companies"   && <CompaniesTab />}
           {tab === "new_company" && <NewCompanyTab onCreated={() => setTab("companies")} />}
-          {tab === "profile"     && <ProfileTab currentEmail={adminEmail} />}
+          {tab === "profile"      && <ProfileTab currentEmail={adminEmail} />}
+          {tab === "reset_admin"  && <ResetAdminTab />}
         </div>
       </div>
     </div>
@@ -664,6 +666,86 @@ function ProfileTab({ currentEmail }: { currentEmail: string }) {
 
       <Btn full disabled={loading} onClick={handle}>
         {loading ? "جارٍ الحفظ..." : "حفظ التغييرات"}
+      </Btn>
+    </div>
+  );
+}
+
+// ── Reset Admin (create fresh super admin via SETUP_SECRET) ────
+
+function ResetAdminTab() {
+  const [setupKey, setSetupKey]   = useState("");
+  const [name, setName]           = useState("");
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [confirm, setConfirm]     = useState("");
+  const [error, setError]         = useState("");
+  const [success, setSuccess]     = useState("");
+  const [loading, setLoading]     = useState(false);
+
+  const handle = async () => {
+    setError(""); setSuccess("");
+    if (!setupKey) { setError("أدخل مفتاح SETUP_SECRET"); return; }
+    if (!name || !email || !password) { setError("جميع الحقول مطلوبة"); return; }
+    if (password.length < 8) { setError("كلمة المرور يجب أن تكون 8 أحرف على الأقل"); return; }
+    if (password !== confirm) { setError("كلمتا المرور غير متطابقتان"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/reset-admin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setupKey, name, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "حدث خطأ"); return; }
+      setSuccess(`✅ تم إنشاء حساب المدير (${data.email}) — يمكنك الآن الدخول بالبيانات الجديدة`);
+      setSetupKey(""); setPassword(""); setConfirm("");
+    } catch { setError("تعذّر الاتصال بالخادم"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ maxWidth: 480 }}>
+      {/* Warning box */}
+      <div style={{
+        background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12,
+        padding: "16px 20px", marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: "#92400E", marginBottom: 6 }}>⚠️ تحذير</div>
+        <div style={{ fontSize: 12.5, color: "#92400E", lineHeight: 1.7 }}>
+          هذه الصفحة تُنشئ حساب مدير عام جديداً وتحذف الحساب القديم نهائياً.
+          <br />
+          تحتاج إلى مفتاح <strong>SETUP_SECRET</strong> المضبوط في Vercel.
+        </div>
+      </div>
+
+      <div style={{ background: C.surface, borderRadius: 12, padding: 28, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 20, color: C.text }}>إنشاء حساب مدير جديد</div>
+
+        <Field label="مفتاح SETUP_SECRET *">
+          <input style={{ ...inputStyle, fontFamily: "monospace", letterSpacing: 1 }}
+            type="password" value={setupKey}
+            onChange={e => setSetupKey(e.target.value)}
+            placeholder="المفتاح السري من إعدادات Vercel" />
+        </Field>
+        <Field label="الاسم الكامل *">
+          <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="اسم المدير" />
+        </Field>
+        <Field label="البريد الإلكتروني الجديد *">
+          <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@domain.com" />
+        </Field>
+        <Field label="كلمة المرور الجديدة *">
+          <input style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="8 أحرف على الأقل" />
+        </Field>
+        <Field label="تأكيد كلمة المرور *">
+          <input style={inputStyle} type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="أعد كتابة كلمة المرور" />
+        </Field>
+      </div>
+
+      {error   && <ErrorBox msg={error} />}
+      {success && <SuccessBox msg={success} />}
+
+      <Btn full variant="danger" disabled={loading} onClick={handle}>
+        {loading ? "جارٍ التنفيذ..." : "🔑 إنشاء حساب مدير جديد"}
       </Btn>
     </div>
   );

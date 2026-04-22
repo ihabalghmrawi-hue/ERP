@@ -9,13 +9,12 @@ import { C, S } from "@/lib/engine/design";
 
 interface Props {
   onLogin: (company: Company, user: User, token?: string) => void;
-  onSuperAdmin: () => void;
   onRegister: () => void;
 }
 
 type Screen = "login" | "2fa" | "forgot" | "reset";
 
-export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
+export function CompanyLogin({ onLogin, onRegister }: Props) {
   const [screen, setScreen]         = useState<Screen>("login");
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
@@ -336,14 +335,6 @@ export function CompanyLogin({ onLogin, onSuperAdmin, onRegister }: Props) {
           </div>
         )}
 
-        {/* Super admin link — only on login screen */}
-        {screen === "login" && (
-          <div style={{ textAlign: "center", marginTop: 16 }}>
-            <button style={{ ...S.btn("ghost"), fontSize: 11, color: C.textMuted, border: "none", opacity: 0.5 }} onClick={onSuperAdmin}>
-              دخول المدير العام
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
