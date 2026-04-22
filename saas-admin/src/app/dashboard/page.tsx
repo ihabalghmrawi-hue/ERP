@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getAdminFromCookie } from "@/lib/auth";
 import { DashboardClient } from "./DashboardClient";
 
