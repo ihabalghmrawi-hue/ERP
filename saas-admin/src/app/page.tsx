@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAdminFromCookie } from "@/lib/auth";
 
-export default function Root() {
-  const admin = getAdminFromCookie();
+export default async function Root() {
+  const admin = await getAdminFromCookie();
   if (admin) redirect("/dashboard");
   redirect("/login");
 }

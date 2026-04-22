@@ -20,23 +20,21 @@ export function verifyAdminToken(token: string): AdminToken {
   return jwt.verify(token, SECRET) as AdminToken;
 }
 
-export function getTokenFromCookie(): string | null {
+// Next.js 15: cookies() is async — use only in Server Components/Actions
+export async function getAdminFromCookie(): Promise<AdminToken | null> {
   try {
-    const jar = cookies();
-    return jar.get(COOKIE)?.value ?? null;
+    const jar = await cookies();
+    const token = jar.get(COOKIE)?.value;
+    if (!token) return null;
+    return verifyAdminToken(token);
   } catch { return null; }
 }
 
-export function getAdminFromCookie(): AdminToken | null {
-  const token = getTokenFromCookie();
-  if (!token) return null;
-  try { return verifyAdminToken(token); } catch { return null; }
-}
-
+// For API routes and middleware: read cookie from request header directly
 export function getTokenFromRequest(req: Request): string | null {
-  const auth = (req as any).headers?.get?.("cookie") ?? null;
-  if (!auth) return null;
-  const match = auth.match(new RegExp(`${COOKIE}=([^;]+)`));
+  const cookieHeader = (req as any).headers?.get?.("cookie") ?? null;
+  if (!cookieHeader) return null;
+  const match = (cookieHeader as string).match(new RegExp(`${COOKIE}=([^;]+)`));
   return match?.[1] ?? null;
 }
 
