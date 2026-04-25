@@ -1,6 +1,6 @@
 import { Redis } from "@upstash/redis";
 import { Pool } from "pg";
-import { SaaSDatabase, SuperAdmin, Company } from "./types";
+import { SaaSDatabase, ActivityLog, ActivityType, Invoice, NotificationRecord } from "./types";
 import { hashPassword } from "./password";
 import { v4 as uuidv4 } from "uuid";
 
@@ -18,7 +18,6 @@ function getRedis(): Redis | null {
   } catch { return null; }
 }
 
-// Must match the key used by nexus-erp
 const SAAS_KEY = "saas:data";
 
 // ── PostgreSQL ────────────────────────────────────────────────
@@ -45,20 +44,49 @@ async function pgQuery(sql: string, params?: any[]): Promise<any[] | null> {
 
 // ── Default state ─────────────────────────────────────────────
 function defaultSaaS(): SaaSDatabase {
-  return { companies: [], superAdmins: [], globalCounters: { company: 1, subscription: 1 } };
+  return {
+    companies: [],
+    superAdmins: [],
+    invoices: [],
+    activityLogs: [],
+    notifications: [],
+    globalCounters: { company: 1, subscription: 1, invoice: 1 },
+  };
+}
+
+// ── Migrate old data to new schema ────────────────────────────
+function migrate(db: any): SaaSDatabase {
+  if (!db.invoices) db.invoices = [];
+  if (!db.activityLogs) db.activityLogs = [];
+  if (!db.notifications) db.notifications = [];
+  if (!db.globalCounters.invoice) db.globalCounters.invoice = 1;
+  // Migrate companies: add missing fields
+  db.companies = (db.companies || []).map((c: any) => ({
+    ...c,
+    subscription: {
+      currency: "SAR",
+      ...c.subscription,
+    },
+    usageStats: {
+      totalWarehouses: 0,
+      invoicesThisMonth: 0,
+      ...c.usageStats,
+    },
+  }));
+  return db as SaaSDatabase;
 }
 
 // ── Load ──────────────────────────────────────────────────────
 export async function loadSaaS(): Promise<SaaSDatabase> {
   // 1. PostgreSQL
   const rows = await pgQuery("SELECT data FROM erp_saas_state WHERE id = 1");
-  if (rows && rows[0]?.data) return rows[0].data as SaaSDatabase;
+  if (rows && rows[0]?.data) return migrate(rows[0].data);
 
   // 2. Upstash Redis
   const r = getRedis();
   if (r) {
     const data = await r.get<SaaSDatabase>(SAAS_KEY).catch(() => null);
-    if (data) return data;
+    if (data) return migrate(data);
   }
 
   // 3. Fresh
@@ -72,7 +100,6 @@ export async function loadSaaS(): Promise<SaaSDatabase> {
 export async function saveSaaS(db: SaaSDatabase): Promise<void> {
   const json = JSON.stringify(db);
 
-  // PostgreSQL
   await pgQuery(
     `INSERT INTO erp_saas_state (id, data, updated_at)
      VALUES (1, $1::jsonb, now())
@@ -80,7 +107,6 @@ export async function saveSaaS(db: SaaSDatabase): Promise<void> {
     [json]
   );
 
-  // Upstash Redis — store as object (not string) to match nexus-erp format
   const r = getRedis();
   if (r) await r.set(SAAS_KEY, db).catch(() => {});
 }
@@ -101,16 +127,11 @@ async function bootstrapSuperAdmin(db: SaaSDatabase): Promise<void> {
   });
 }
 
-// ── Tenant data (read-only stats for admin panel) ──────────────
+// ── Tenant data ────────────────────────────────────────────────
 export async function loadTenantData(companyId: string): Promise<any> {
-  // PostgreSQL
-  const rows = await pgQuery(
-    "SELECT data FROM erp_tenant_state WHERE company_id = $1",
-    [companyId]
-  );
+  const rows = await pgQuery("SELECT data FROM erp_tenant_state WHERE company_id = $1", [companyId]);
   if (rows && rows[0]?.data) return rows[0].data;
 
-  // Upstash Redis
   const r = getRedis();
   if (r) {
     const data = await r.get(`tenant:${companyId}`).catch(() => null);
@@ -127,9 +148,56 @@ export async function saveTenantData(companyId: string, data: any): Promise<void
      ON CONFLICT (company_id) DO UPDATE SET data = $2::jsonb, updated_at = now()`,
     [companyId, json]
   );
-  // Store as object (not string) to match nexus-erp format
   const r = getRedis();
   if (r) await r.set(`tenant:${companyId}`, data).catch(() => {});
+}
+
+// ── Activity Logging ──────────────────────────────────────────
+export async function logActivity(
+  db: SaaSDatabase,
+  adminId: string,
+  adminName: string,
+  type: ActivityType,
+  targetId?: string,
+  targetName?: string,
+  metadata?: Record<string, any>
+): Promise<void> {
+  const log: ActivityLog = {
+    id: uuidv4(),
+    adminId,
+    adminName,
+    type,
+    targetId,
+    targetName,
+    metadata,
+    createdAt: new Date().toISOString(),
+  };
+  db.activityLogs = [log, ...(db.activityLogs || [])].slice(0, 500); // keep last 500
+}
+
+// ── Invoice Generation ────────────────────────────────────────
+export function generateInvoice(db: SaaSDatabase, companyId: string): Invoice {
+  const company = db.companies.find(c => c.id === companyId)!;
+  const num = String(db.globalCounters.invoice).padStart(5, "0");
+  db.globalCounters.invoice++;
+
+  const invoice: Invoice = {
+    id: `inv_${num}`,
+    companyId: company.id,
+    companyName: company.name,
+    planId: company.subscription.planId,
+    amount: company.subscription.amount,
+    currency: company.subscription.currency || "SAR",
+    status: "unpaid",
+    billingCycle: company.subscription.billingCycle,
+    issuedAt: new Date().toISOString(),
+    dueAt: addDays(new Date(), 7),
+    periodStart: company.subscription.startDate,
+    periodEnd: company.subscription.endDate,
+  };
+
+  db.invoices = [invoice, ...(db.invoices || [])];
+  return invoice;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
