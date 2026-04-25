@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
   if (!admin || !verifyPassword(password, admin.password))
     return NextResponse.json({ error: "بيانات الدخول غير صحيحة" }, { status: 401 });
 
-  // Rehash if stored as plain text
-  if (!admin.password.startsWith("$2")) {
+  // Rehash if stored as plain text (not scrypt and not bcrypt)
+  if (!admin.password.startsWith("scrypt$") && !admin.password.startsWith("$2")) {
     admin.password = hashPassword(password);
     await saveSaaS(db);
   }
