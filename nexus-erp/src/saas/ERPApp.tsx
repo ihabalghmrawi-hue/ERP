@@ -29,11 +29,12 @@ import AuditLog       from "@/components/modules/AuditLog";
 import { Reconciliation }  from "@/components/modules/Reconciliation";
 import { CashierReports }      from "@/components/modules/CashierReports";
 import { FinancialStatements } from "@/components/modules/FinancialStatements";
+import { SalesReps }          from "@/components/modules/SalesReps";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements";
+  | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements" | "sales_reps";
 
 interface Props {
   company: Company;
@@ -92,6 +93,7 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
     users: t("users"), settings: t("settings"), pos: "نقطة البيع", audit_log: "سجل التدقيق",
     reconciliation: "تسوية البنك", cashier_reports: "تقارير الكاشير",
     financial_statements: "القوائم المالية",
+    sales_reps: "مندوبو المبيعات",
   };
 
   const renderPage = () => {
@@ -115,6 +117,7 @@ export function ERPApp({ company, lang, setLang, addToast }: Props) {
       case "reconciliation":  return <Reconciliation />;
       case "cashier_reports":      return <CashierReports />;
       case "financial_statements": return <FinancialStatements />;
+      case "sales_reps":           return <SalesReps addToast={addToast} />;
     }
   };
 

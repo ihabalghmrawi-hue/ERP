@@ -1071,4 +1071,100 @@ export const AccountingEngine = {
       period: { startDate, endDate },
     };
   },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Sales Rep: commission + report helpers
+  // ─────────────────────────────────────────────────────────────────
+
+  getSalesRepReport(repId?: string, fromDate?: string, toDate?: string) {
+    const db = DB.get();
+    const invoices = db.invoices.filter((inv) => {
+      if (inv.isReturned) return false;
+      if (repId && inv.salesRepId !== repId) return false;
+      if (fromDate && inv.date < fromDate) return false;
+      if (toDate   && inv.date > toDate)   return false;
+      return true;
+    });
+
+    // Group by rep
+    const byRep = new Map<string, { rep: import("../db/database").SalesRep | null; invoices: typeof invoices; totalSales: number; commission: number }>();
+    invoices.forEach((inv) => {
+      const rid  = inv.salesRepId || "__none__";
+      const rep  = db.salesReps?.find((r) => r.id === rid) || null;
+      const rate = rep?.commissionRate || 0;
+      const entry = byRep.get(rid) || { rep, invoices: [], totalSales: 0, commission: 0 };
+      entry.invoices.push(inv);
+      entry.totalSales += inv.total;
+      entry.commission += inv.total * (rate / 100);
+      byRep.set(rid, entry);
+    });
+
+    return Array.from(byRep.values()).filter((r) => r.rep !== null);
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Integrity Validation Layer
+  // ─────────────────────────────────────────────────────────────────
+
+  validateIntegrity(): {
+    errors: string[];
+    warnings: string[];
+    unpostedInvoices: string[];
+    orphanTreasury: string[];
+    imbalancedJEs: string[];
+  } {
+    const db = DB.get();
+    const errors:           string[] = [];
+    const warnings:         string[] = [];
+    const unpostedInvoices: string[] = [];
+    const orphanTreasury:   string[] = [];
+    const imbalancedJEs:    string[] = [];
+
+    // 1. Posted invoices must have a JE
+    db.invoices.forEach((inv) => {
+      if (inv.approvalStatus === "approved" && !inv.journalEntryId && !inv.isReturned) {
+        unpostedInvoices.push(inv.id);
+        warnings.push(`فاتورة ${inv.id} معتمدة بدون قيد محاسبي`);
+      }
+    });
+
+    // 2. Treasury transactions must have a JE
+    db.treasury.forEach((tx) => {
+      if (!tx.journalEntryId && tx.referenceType !== "adjustment") {
+        orphanTreasury.push(tx.id);
+        errors.push(`حركة خزينة ${tx.id} بدون قيد محاسبي`);
+      }
+    });
+
+    // 3. Every posted JE must balance (debit = credit)
+    db.journalEntries.forEach((je) => {
+      if (je.status === "reversed") return;
+      const totalD = je.lines.reduce((s, l) => s + (l.debit  || 0), 0);
+      const totalC = je.lines.reduce((s, l) => s + (l.credit || 0), 0);
+      if (Math.abs(totalD - totalC) > 0.01) {
+        imbalancedJEs.push(je.id);
+        errors.push(`القيد ${je.id} غير متوازن — مدين: ${totalD.toFixed(2)} / دائن: ${totalC.toFixed(2)}`);
+      }
+    });
+
+    return { errors, warnings, unpostedInvoices, orphanTreasury, imbalancedJEs };
+  },
+
+  // Customer balance from ledger (live, not stored)
+  computeCustomerBalance(customerId: string): number {
+    const db  = DB.get();
+    const arAcc = this.getAccountByCode("1100");
+    if (!arAcc) return 0;
+    let balance = 0;
+    db.journalEntries.forEach((je) => {
+      if (je.status === "reversed") return;
+      const related = db.invoices.some((inv) => inv.customerId === customerId && inv.journalEntryId === je.id)
+        || db.invoices.some((inv) => inv.customerId === customerId && (je.sourceId === inv.id || je.reference?.includes(inv.id)));
+      if (!related) return;
+      je.lines.filter((l) => l.accountId === arAcc.id).forEach((l) => {
+        balance += (l.debit || 0) - (l.credit || 0);
+      });
+    });
+    return Math.max(0, balance);
+  },
 };

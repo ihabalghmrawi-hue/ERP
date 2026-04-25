@@ -124,6 +124,17 @@ export interface InvoiceLine {
   taxExempt?: boolean;
 }
 
+export interface SalesRep {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  commissionRate: number; // percentage 0–100
+  status: "active" | "inactive";
+  createdAt: string;
+}
+
 export interface Invoice {
   id: string;
   date: string;
@@ -147,6 +158,14 @@ export interface Invoice {
   approvedBy?: string;
   approvedAt?: string;
   rejectedReason?: string;
+  // Relations
+  warehouseId?: string;
+  warehouseName?: string;
+  salesRepId?: string;
+  salesRepName?: string;
+  createdBy?: string;       // user.id who created
+  createdByName?: string;
+  posSessionId?: string;    // if created via POS
   // Returns
   isReturned?: boolean;
   returnJEId?: string;
@@ -362,8 +381,9 @@ export interface DatabaseState {
   bankStatements: BankStatement[];
   financialPeriods: FinancialPeriod[];
   posSessions: POSSession[];
+  salesReps: SalesRep[];
   settings: AppSettings;
-  counters: { je: number; inv: number; po: number; tx: number; bs: number; fp: number; ps: number };
+  counters: { je: number; inv: number; po: number; tx: number; bs: number; fp: number; ps: number; sr: number };
 }
 
 // ─── Default Chart of Accounts ─────────────────────────────────
@@ -413,6 +433,7 @@ export function createInitialDatabaseState(): DatabaseState {
     bankStatements: [],
     financialPeriods: [],
     posSessions: [],
+    salesReps: [],
     settings: {
       companyName: "",
       taxNumber: "",
@@ -428,7 +449,7 @@ export function createInitialDatabaseState(): DatabaseState {
       lockedPeriods: [],
       requireInvoiceApproval: false,
     },
-    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1, ps: 1 },
+    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1, ps: 1, sr: 1 },
   };
 }
 

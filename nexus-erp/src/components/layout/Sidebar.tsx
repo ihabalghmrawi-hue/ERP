@@ -9,7 +9,7 @@ import { DB } from "@/lib/db/database";
 export type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements";
+  | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements" | "sales_reps";
 
 interface SidebarProps {
   page: PageId;
@@ -161,8 +161,9 @@ export function Sidebar({ page, onNavigate }: SidebarProps) {
     {
       section: t("operations"),
       items: [
-        { id: "sales"     as PageId, label: t("sales"),      perm: "view_sales"     },
-        { id: "purchases" as PageId, label: t("purchases"),  perm: "view_purchases" },
+        { id: "sales"      as PageId, label: t("sales"),         perm: "view_sales"     },
+        { id: "sales_reps" as PageId, label: "مندوبو المبيعات", perm: "view_sales"    },
+        { id: "purchases"  as PageId, label: t("purchases"),    perm: "view_purchases" },
         { id: "inventory" as PageId, label: t("inventory"),  perm: "view_inventory" },
         { id: "treasury"  as PageId, label: t("treasury"),   perm: "view_treasury"  },
       ],

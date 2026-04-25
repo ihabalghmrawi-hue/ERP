@@ -155,6 +155,7 @@ export const PAGE_PERMISSION: Record<string, Permission> = {
   reconciliation:       "manage_treasury",
   cashier_reports:      "view_reports",
   financial_statements: "view_accounting",
+  sales_reps:           "view_sales",
 };
 
 export function hasPermission(

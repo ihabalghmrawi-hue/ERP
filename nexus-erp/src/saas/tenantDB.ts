@@ -63,10 +63,11 @@ function migrate(raw: any): DatabaseState {
   if (!Array.isArray(state.bankStatements))      state.bankStatements      = [];
   if (!Array.isArray(state.financialPeriods))    state.financialPeriods    = [];
   if (!Array.isArray(state.posSessions))         state.posSessions         = [];
+  if (!Array.isArray(state.salesReps))           state.salesReps           = [];
 
   // Counters — add missing keys, never reset existing ones
   if (!state.counters || typeof state.counters !== "object") {
-    state.counters = { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1, ps: 1 };
+    state.counters = { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1, ps: 1, sr: 1 };
   } else {
     const c = state.counters as Record<string, number>;
     if (!c.je || isNaN(c.je)) c.je = 1;
@@ -76,6 +77,7 @@ function migrate(raw: any): DatabaseState {
     if (!c.bs || isNaN(c.bs)) c.bs = 1;
     if (!c.fp || isNaN(c.fp)) c.fp = 1;
     if (!c.ps || isNaN(c.ps)) c.ps = 1;
+    if (!c.sr || isNaN(c.sr)) c.sr = 1;
   }
 
   // Settings — merge with defaults, never wipe

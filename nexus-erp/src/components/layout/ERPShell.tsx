@@ -32,11 +32,12 @@ import { AuditLog }        from "@/components/modules/AuditLog";
 import { Reconciliation }  from "@/components/modules/Reconciliation";
 import { CashierReports }      from "@/components/modules/CashierReports";
 import { FinancialStatements } from "@/components/modules/FinancialStatements";
+import { SalesReps }          from "@/components/modules/SalesReps";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users"
-  | "settings" | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements";
+  | "settings" | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements" | "sales_reps";
 
 // ── SVG icons for action commands ─────────────────────────────────────────────
 const PlusIcon = () => (
@@ -119,6 +120,7 @@ function ERPShellInner() {
     reconciliation: isAr ? "تسوية البنك" : "Reconciliation",
     cashier_reports:      isAr ? "تقارير الكاشير" : "Cashier Reports",
     financial_statements: isAr ? "القوائم المالية" : "Financial Statements",
+    sales_reps:           isAr ? "مندوبو المبيعات" : "Sales Reps",
   };
 
   // ── Command palette items ───────────────────────────────────────────────────
@@ -168,6 +170,7 @@ function ERPShellInner() {
       settings: "manage_settings", dashboard: "view_dashboard", pos: "access_pos",
       audit_log: "manage_users", reconciliation: "manage_treasury",
       cashier_reports: "view_reports", financial_statements: "view_accounting",
+      sales_reps: "view_sales",
     };
     return hasPermission(authUser, permMap[page] as any);
   });
@@ -183,6 +186,7 @@ function ERPShellInner() {
     { id: "suppliers",      label: t("suppliers"),     sublabel: t("masterData"),  perm: "view_suppliers",  icon: NAV_ICONS.suppliers },
     { id: "accounting",     label: t("accounting"),    sublabel: t("finance"),     perm: "view_accounting", icon: NAV_ICONS.accounting },
     { id: "reports",        label: t("reports"),       sublabel: t("finance"),     perm: "view_reports",    icon: NAV_ICONS.reports },
+    { id: "sales_reps",           label: isAr ? "مندوبو المبيعات" : "Sales Reps",           sublabel: t("operations"), perm: "view_sales",   icon: NAV_ICONS.sales },
     { id: "cashier_reports",      label: isAr ? "تقارير الكاشير" : "Cashier Reports",        sublabel: t("finance"), perm: "view_reports",    icon: NAV_ICONS.cashier_reports },
     { id: "financial_statements", label: isAr ? "القوائم المالية" : "Financial Statements",  sublabel: t("finance"), perm: "view_accounting", icon: NAV_ICONS.accounting },
     { id: "reconciliation",  label: isAr ? "تسوية البنك" : "Reconciliation",   sublabel: t("finance"), perm: "manage_treasury", icon: NAV_ICONS.reconciliation },
@@ -211,6 +215,7 @@ function ERPShellInner() {
     reconciliation:       <Reconciliation />,
     cashier_reports:      <CashierReports />,
     financial_statements: <FinancialStatements />,
+    sales_reps:           <SalesReps addToast={addToast} />,
   };
 
   return (

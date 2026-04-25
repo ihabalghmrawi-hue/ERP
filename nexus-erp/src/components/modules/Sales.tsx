@@ -62,7 +62,7 @@ export function Sales({ addToast }: Props) {
   const [form, setForm] = useState({
     customerId: "", paymentType: "credit",
     lines: [{ productId: "", qty: 1, discount: 0 }] as LineForm[],
-    notes: "",
+    notes: "", salesRepId: "", warehouseId: "",
   });
 
   const activeVatRate    = vatEnabled ? (settings.vatRate || 0) : 0;
@@ -101,6 +101,8 @@ export function Sales({ addToast }: Props) {
       taxRate: l.taxRate, subtotal: l.subtotal, tax: l.tax, total: l.total,
       taxExempt: l.taxExempt,
     }));
+    const rep  = form.salesRepId ? db.salesReps?.find((r) => r.id === form.salesRepId) : null;
+    const wh   = form.warehouseId ? db.warehouses.find((w) => w.id === form.warehouseId) : null;
     const invoice: Invoice = {
       id, date: invoiceDate,
       dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
@@ -114,6 +116,12 @@ export function Sales({ addToast }: Props) {
       amountDue:  isCash ? 0 : sums.total,
       notes: form.notes,
       approvalStatus: needsApproval ? "pending" : "approved",
+      salesRepId:   rep?.id,
+      salesRepName: rep?.name,
+      warehouseId:   wh?.id,
+      warehouseName: wh?.name,
+      createdBy:     user?.id,
+      createdByName: user?.name,
     };
     try {
       // Only post to accounting if approved (cash is auto-approved)
@@ -127,7 +135,7 @@ export function Sales({ addToast }: Props) {
       logActivity(user?.id || "", user?.name || "", "CREATE", "Sales", `أنشأ الفاتورة ${id}${needsApproval ? " (بانتظار الموافقة)" : ""}`);
       addToast(needsApproval ? `تم إنشاء الفاتورة ${id} — بانتظار موافقة المدير` : t("invoiceCreated"), needsApproval ? "info" : "success");
       setShowModal(false);
-      setForm({ customerId: "", paymentType: "credit", lines: [{ productId: "", qty: 1, discount: 0 }], notes: "" });
+      setForm({ customerId: "", paymentType: "credit", lines: [{ productId: "", qty: 1, discount: 0 }], notes: "", salesRepId: "", warehouseId: "" });
     } catch (e: any) {
       addToast(e.message, "error");
       logError(user?.id || "", user?.name || "", "Sales", e.message);
@@ -278,6 +286,7 @@ export function Sales({ addToast }: Props) {
             ...(canApprove ? [{ label: "إجراء" }] : []),
             { label: "الموافقة" }, { label: t("jeRef") }, { label: t("status") }, { label: t("total") },
             { label: "مستحق" }, { label: "ضريبة" }, { label: t("type") }, { label: t("customer") },
+            { label: "المندوب" }, { label: "المخزن" },
             { label: t("date") }, { label: t("invoiceNo") },
           ]}
           rows={filtered.map((inv) => [
@@ -319,7 +328,10 @@ export function Sales({ addToast }: Props) {
               {(inv.taxAmount || 0) > 0 ? fmt(inv.taxAmount) : "معفى"}
             </span>,
             <span key="tp" style={S.badge("info")}>{inv.paymentType === "cash" ? t("cash") : t("credit")}</span>,
-            inv.customerName, fmtDate(inv.date),
+            inv.customerName,
+            <span key="rep" style={{ fontSize: 11, color: C.textSec }}>{inv.salesRepName || "—"}</span>,
+            <span key="wh"  style={{ fontSize: 11, color: C.textMuted }}>{inv.warehouseName || "—"}</span>,
+            fmtDate(inv.date),
             <span key="id" style={{ color: C.accent, fontWeight: 700 }}>{inv.id}</span>,
           ])}
           emptyMsg={t("noInvoicesYet")}
@@ -351,6 +363,28 @@ export function Sales({ addToast }: Props) {
               <select style={S.select} value={form.paymentType} onChange={(e) => setForm({ ...form, paymentType: e.target.value })}>
                 <option value="credit">{t("credit")}</option>
                 <option value="cash">{t("cash")}</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Sales Rep + Warehouse */}
+          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={S.label}>مندوب المبيعات</label>
+              <select style={S.select} value={form.salesRepId} onChange={(e) => setForm({ ...form, salesRepId: e.target.value })}>
+                <option value="">— بدون مندوب —</option>
+                {(db.salesReps || []).filter((r) => r.status === "active").map((r) => (
+                  <option key={r.id} value={r.id}>{r.name} ({r.commissionRate}%)</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={S.label}>المخزن</label>
+              <select style={S.select} value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+                <option value="">— المخزن الافتراضي —</option>
+                {db.warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
               </select>
             </div>
           </div>
