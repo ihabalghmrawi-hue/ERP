@@ -8,6 +8,7 @@ import { AccountingEngine } from "@/lib/engine/accounting";
 import { TaxService, VatMode } from "@/lib/engine/tax";
 import { fmt, today, uid, logActivity } from "@/lib/engine/helpers";
 import { Modal } from "@/components/ui/Modal";
+import { POSReceipt, printReceipt } from "@/components/ui/POSReceipt";
 
 interface Props { addToast: (msg: string, type?: "success" | "error" | "info") => void; }
 interface CartItem { productId: string; name: string; price: number; qty: number; taxExempt: boolean; }
@@ -26,6 +27,8 @@ export function POS({ addToast }: Props) {
   const [payMode,    setPayMode]    = useState<"cash" | "credit">("cash");
   const [customerId, setCustomerId] = useState("");
   const [lastInvId,  setLastInvId]  = useState<string | null>(null);
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [printMode, setPrintMode] = useState<"thermal" | "a4">("thermal");
 
   // Session management
   const [showOpenSession, setShowOpenSession] = useState(false);
@@ -178,6 +181,7 @@ export function POS({ addToast }: Props) {
       DB.save();
       logActivity(user?.id || "", user?.name || "", "CREATE", "POS", `بيع نقدي ${invId}`);
       setLastInvId(invId);
+      setPrintInvoice(invoice);
       setCart([]);
       setSearch("");
       setCustomerId("");
@@ -380,9 +384,15 @@ export function POS({ addToast }: Props) {
               </div>
             </div>
 
-            {lastInvId && (
-              <div style={{ background: C.successLight, borderRadius: 7, padding: "6px 10px", marginBottom: 10, fontSize: 11, color: C.success, fontWeight: 600, textAlign: "center" }}>
-                ✅ آخر فاتورة: {lastInvId}
+            {lastInvId && printInvoice && (
+              <div style={{ background: C.successLight, borderRadius: 7, padding: "6px 10px", marginBottom: 10, fontSize: 11, color: C.success, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>✅ آخر فاتورة: {lastInvId}</span>
+                <button
+                  style={{ ...S.btn("primary"), border: "none", padding: "3px 10px", fontSize: 10, borderRadius: 6 }}
+                  onClick={() => setPrintInvoice(printInvoice)}
+                >
+                  🖨️ طباعة
+                </button>
               </div>
             )}
 
@@ -423,6 +433,44 @@ export function POS({ addToast }: Props) {
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button style={{ ...S.btn("primary"), border: "none" }} onClick={handleOpenSession}>فتح الوردية</button>
             <button style={{ ...S.btn("outline") }} onClick={() => setShowOpenSession(false)}>إلغاء</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Receipt Print Modal ── */}
+      {printInvoice && (
+        <Modal title={`🖨️ طباعة الفاتورة — ${printInvoice.id}`} onClose={() => setPrintInvoice(null)} wide>
+          {/* Print mode selector */}
+          <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>حجم الطباعة:</span>
+            {(["thermal", "a4"] as const).map((m) => (
+              <button key={m} onClick={() => setPrintMode(m)} style={{
+                padding: "4px 14px", borderRadius: 7, border: `1.5px solid ${printMode === m ? "#2563EB" : "#e2e8f0"}`,
+                background: printMode === m ? "#eff6ff" : "#fff", color: printMode === m ? "#2563EB" : "#64748b",
+                fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}>
+                {m === "thermal" ? "🖨️ حراري 80mm" : "📄 A4"}
+              </button>
+            ))}
+          </div>
+
+          {/* Preview */}
+          <div style={{ background: "#f1f5f9", borderRadius: 10, padding: 16, maxHeight: 480, overflowY: "auto", display: "flex", justifyContent: "center" }}>
+            <div style={{ boxShadow: "0 4px 24px rgba(0,0,0,0.12)", background: "#fff" }}>
+              <POSReceipt
+                invoice={printInvoice}
+                settings={settings}
+                cashierName={user?.name || "الكاشير"}
+                printMode={printMode}
+              />
+            </div>
+          </div>
+
+          <div className="no-print" style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button style={{ ...S.btn("primary"), border: "none", flex: 1, fontWeight: 800 }} onClick={printReceipt}>
+              🖨️ طباعة
+            </button>
+            <button style={{ ...S.btn("outline") }} onClick={() => setPrintInvoice(null)}>إغلاق</button>
           </div>
         </Modal>
       )}

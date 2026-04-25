@@ -28,13 +28,15 @@ import { Reports }    from "@/components/modules/Reports";
 import { Users }      from "@/components/modules/Users";
 import { Settings }   from "@/components/modules/Settings";
 import { POS }        from "@/components/modules/POS";
-import { AuditLog }       from "@/components/modules/AuditLog";
-import { Reconciliation } from "@/components/modules/Reconciliation";
+import { AuditLog }        from "@/components/modules/AuditLog";
+import { Reconciliation }  from "@/components/modules/Reconciliation";
+import { CashierReports }      from "@/components/modules/CashierReports";
+import { FinancialStatements } from "@/components/modules/FinancialStatements";
 
 type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users"
-  | "settings" | "pos" | "audit_log" | "reconciliation";
+  | "settings" | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements";
 
 // ── SVG icons for action commands ─────────────────────────────────────────────
 const PlusIcon = () => (
@@ -115,6 +117,8 @@ function ERPShellInner() {
     users: t("users"), settings: t("settings"), pos: "POS",
     audit_log: isAr ? "سجل التدقيق" : "Audit Log",
     reconciliation: isAr ? "تسوية البنك" : "Reconciliation",
+    cashier_reports:      isAr ? "تقارير الكاشير" : "Cashier Reports",
+    financial_statements: isAr ? "القوائم المالية" : "Financial Statements",
   };
 
   // ── Command palette items ───────────────────────────────────────────────────
@@ -163,6 +167,7 @@ function ERPShellInner() {
       accounting: "view_accounting", reports: "view_reports", users: "manage_users",
       settings: "manage_settings", dashboard: "view_dashboard", pos: "access_pos",
       audit_log: "manage_users", reconciliation: "manage_treasury",
+      cashier_reports: "view_reports", financial_statements: "view_accounting",
     };
     return hasPermission(authUser, permMap[page] as any);
   });
@@ -178,7 +183,9 @@ function ERPShellInner() {
     { id: "suppliers",      label: t("suppliers"),     sublabel: t("masterData"),  perm: "view_suppliers",  icon: NAV_ICONS.suppliers },
     { id: "accounting",     label: t("accounting"),    sublabel: t("finance"),     perm: "view_accounting", icon: NAV_ICONS.accounting },
     { id: "reports",        label: t("reports"),       sublabel: t("finance"),     perm: "view_reports",    icon: NAV_ICONS.reports },
-    { id: "reconciliation", label: isAr ? "تسوية البنك" : "Reconciliation", sublabel: t("finance"), perm: "manage_treasury", icon: NAV_ICONS.reconciliation },
+    { id: "cashier_reports",      label: isAr ? "تقارير الكاشير" : "Cashier Reports",        sublabel: t("finance"), perm: "view_reports",    icon: NAV_ICONS.cashier_reports },
+    { id: "financial_statements", label: isAr ? "القوائم المالية" : "Financial Statements",  sublabel: t("finance"), perm: "view_accounting", icon: NAV_ICONS.accounting },
+    { id: "reconciliation",  label: isAr ? "تسوية البنك" : "Reconciliation",   sublabel: t("finance"), perm: "manage_treasury", icon: NAV_ICONS.reconciliation },
     { id: "users",          label: t("users"),         sublabel: t("system"),      perm: "manage_users",    icon: NAV_ICONS.users },
     { id: "audit_log",      label: isAr ? "سجل التدقيق" : "Audit Log", sublabel: t("system"), perm: "manage_users", icon: NAV_ICONS.audit_log },
     { id: "settings",       label: t("settings"),      sublabel: t("system"),      perm: "manage_settings", icon: NAV_ICONS.settings },
@@ -200,8 +207,10 @@ function ERPShellInner() {
     users:      <Users      addToast={addToast} />,
     settings:   <Settings   lang={lang} setLang={handleSetLang} />,
     pos:        <POS        addToast={addToast} />,
-    audit_log:      <AuditLog />,
-    reconciliation: <Reconciliation />,
+    audit_log:            <AuditLog />,
+    reconciliation:       <Reconciliation />,
+    cashier_reports:      <CashierReports />,
+    financial_statements: <FinancialStatements />,
   };
 
   return (

@@ -151,8 +151,10 @@ export const PAGE_PERMISSION: Record<string, Permission> = {
   users:      "manage_users",
   settings:   "manage_settings",
   pos:        "access_pos",
-  audit_log:      "manage_users",
-  reconciliation: "manage_treasury",
+  audit_log:            "manage_users",
+  reconciliation:       "manage_treasury",
+  cashier_reports:      "view_reports",
+  financial_statements: "view_accounting",
 };
 
 export function hasPermission(

@@ -9,7 +9,7 @@ import { DB } from "@/lib/db/database";
 export type PageId =
   | "dashboard" | "sales" | "purchases" | "inventory" | "treasury"
   | "customers" | "suppliers" | "accounting" | "reports" | "users" | "settings"
-  | "pos" | "audit_log" | "reconciliation";
+  | "pos" | "audit_log" | "reconciliation" | "cashier_reports" | "financial_statements";
 
 interface SidebarProps {
   page: PageId;
@@ -100,6 +100,13 @@ export const NAV_ICONS: Record<string, ReactNode> = {
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
     </svg>
   ),
+  cashier_reports: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+      <path d="M7 8h1M12 8h5M7 11h3M14 11h3"/>
+    </svg>
+  ),
   settings: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3"/>
@@ -170,9 +177,11 @@ export function Sidebar({ page, onNavigate }: SidebarProps) {
     {
       section: t("finance"),
       items: [
-        { id: "accounting"     as PageId, label: t("accounting"),   perm: "view_accounting"  },
-        { id: "reports"        as PageId, label: t("reports"),      perm: "view_reports"     },
-        { id: "reconciliation" as PageId, label: "تسوية البنك",    perm: "manage_treasury"  },
+        { id: "accounting"            as PageId, label: t("accounting"),      perm: "view_accounting"  },
+        { id: "financial_statements"  as PageId, label: "القوائم المالية",  perm: "view_accounting"  },
+        { id: "reports"               as PageId, label: t("reports"),        perm: "view_reports"     },
+        { id: "cashier_reports"       as PageId, label: "تقارير الكاشير",   perm: "view_reports"     },
+        { id: "reconciliation"        as PageId, label: "تسوية البنك",      perm: "manage_treasury"  },
       ],
     },
     {

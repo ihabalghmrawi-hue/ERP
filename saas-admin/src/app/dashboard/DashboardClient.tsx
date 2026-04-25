@@ -35,14 +35,16 @@ function Badge({ label, color, bg }: { label: string; color: string; bg: string 
   return <span style={{ padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, color, background: bg }}>{label}</span>;
 }
 
-function planBadge(planId: PlanId) {
-  const map: Record<PlanId, { color: string; bg: string }> = {
+function planBadge(planId: PlanId | string | undefined) {
+  const map: Record<string, { color: string; bg: string }> = {
     trial:      { color: C.warning,  bg: C.warningLight },
     starter:    { color: C.accentMid, bg: C.accentLight },
     pro:        { color: C.purple,   bg: C.purpleLight },
     enterprise: { color: C.success,  bg: C.successLight },
   };
-  return <Badge label={PLANS[planId].nameAr} {...map[planId]} />;
+  const plan = planId && PLANS[planId as PlanId];
+  const style = (planId && map[planId]) || { color: C.textMuted, bg: C.bg };
+  return <Badge label={plan ? plan.nameAr : (planId || "—")} {...style} />;
 }
 
 function statusBadge(company: Company) {
@@ -114,9 +116,10 @@ function OverviewTab() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/stats").then(r => r.json()),
-      fetch("/api/notifications").then(r => r.json()),
-    ]).then(([s, n]) => { setStats(s); setAlerts(n.alerts || []); setLoading(false); });
+      fetch("/api/stats").then(r => r.ok ? r.json() : {}),
+      fetch("/api/notifications").then(r => r.ok ? r.json() : {}),
+    ]).then(([s, n]: [any, any]) => { setStats(s); setAlerts(n.alerts || []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.textMuted }}>جارٍ التحميل...</div>;
@@ -196,10 +199,17 @@ function CompaniesTab({ onNew }: { onNew: () => void }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(`/api/companies?q=${encodeURIComponent(q)}&status=${status}&plan=${plan}&sort=${sort}&page=${page}&limit=20`);
-    const j = await r.json();
-    setData(j.data || []); setTotal(j.total || 0); setPages(j.pages || 1);
-    setLoading(false);
+    try {
+      const r = await fetch(`/api/companies?q=${encodeURIComponent(q)}&status=${status}&plan=${plan}&sort=${sort}&page=${page}&limit=20`);
+      if (r.ok) {
+        const j = await r.json();
+        setData(j.data || []); setTotal(j.total || 0); setPages(j.pages || 1);
+      }
+    } catch {
+      // network error — keep existing data
+    } finally {
+      setLoading(false);
+    }
   }, [q, status, plan, sort, page]);
 
   useEffect(() => { load(); }, [load]);
@@ -290,7 +300,7 @@ function CompaniesTab({ onNew }: { onNew: () => void }) {
       {modal === "renew" && selected && (
         <Modal title={`تجديد اشتراك — ${selected.name}`} onClose={() => setModal(null)}>
           <div style={{ background: C.accentLight, borderRadius: 10, padding: "12px 16px", marginBottom: 18, fontSize: 13 }}>
-            <div><strong>الخطة الحالية:</strong> {PLANS[selected.subscription.planId].nameAr}</div>
+            <div><strong>الخطة الحالية:</strong> {PLANS[selected.subscription.planId]?.nameAr ?? selected.subscription.planId}</div>
             <div><strong>تاريخ الانتهاء:</strong> {fmtDate(selected.subscription.endDate)}</div>
           </div>
           <Select label="الخطة الجديدة" value={renewForm.planId} onChange={e => setRenewForm(f => ({ ...f, planId: e.target.value as PlanId }))}>
@@ -382,7 +392,7 @@ function CompanyDetailModal({ company, onClose }: { company: Company; onClose: (
           {[
             ["البريد", company.email], ["الهاتف", company.phone || "—"],
             ["الدولة", company.country], ["تاريخ الإنشاء", fmtDate(company.createdAt)],
-            ["الخطة", PLANS[company.subscription.planId].nameAr],
+            ["الخطة", PLANS[company.subscription.planId]?.nameAr ?? company.subscription.planId],
             ["ينتهي في", fmtDate(company.subscription.endDate)],
             ["المبلغ", fmtMoney(company.subscription.amount, company.subscription.currency)],
             ["المستخدمون", detail?.stats?.users ?? "…"],
@@ -508,8 +518,10 @@ function InvoicesTab() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/invoices?status=${statusFilter}`);
-    setInvoices(await r.json());
+    try {
+      const r = await fetch(`/api/invoices?status=${statusFilter}`);
+      if (r.ok) setInvoices(await r.json());
+    } catch { /* network error */ }
   }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
