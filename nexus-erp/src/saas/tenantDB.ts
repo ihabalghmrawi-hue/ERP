@@ -1,6 +1,6 @@
 "use client";
 
-import { DatabaseState, createInitialDatabaseState } from "@/lib/db/database";
+import { DatabaseState, createInitialDatabaseState, createDefaultAccounts } from "@/lib/db/database";
 
 // ─── Per-tenant storage ────────────────────────────────────────
 // Primary:   server-side PostgreSQL (via API route /api/tenant/:id)
@@ -12,6 +12,37 @@ function getKey(companyId: string): string {
 
 function createInitialTenantState(): DatabaseState {
   return createInitialDatabaseState();
+}
+
+// Ensure loaded data has all required fields and default accounts
+function migrate(state: DatabaseState): DatabaseState {
+  if (!state.emailLog)         state.emailLog         = [];
+  if (!state.bankStatements)   state.bankStatements   = [];
+  if (!state.inventoryMovements) state.inventoryMovements = [];
+  if (!state.activityLog)      state.activityLog      = [];
+  if (!state.treasury)         state.treasury         = [];
+  if (!state.warehouses)       state.warehouses       = [];
+  if (!state.counters)         state.counters         = { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1 };
+  if (!state.settings)         state.settings         = createInitialDatabaseState().settings;
+
+  // If no accounts exist at all, seed the default chart of accounts
+  if (!state.accounts || state.accounts.length === 0) {
+    state.accounts = createDefaultAccounts();
+  }
+  if (!state.financialPeriods) state.financialPeriods = [];
+  const ctr = state.counters as Record<string, number>;
+  if (!ctr.fp) ctr.fp = 1;
+
+  // Backfill missing audit fields on existing journal entries
+  state.journalEntries = (state.journalEntries || []).map((je: any) => ({
+    createdAt: je.createdAt || je.date + "T00:00:00.000Z",
+    createdBy: je.createdBy || "system",
+    sourceType: je.sourceType || "manual",
+    sourceId:   je.sourceId   || je.reference || je.id,
+    ...je,
+  }));
+
+  return state;
 }
 
 // ─── In-memory state ──────────────────────────────────────────
@@ -37,8 +68,7 @@ export const TenantDB = {
 
     try {
       const raw = localStorage.getItem(getKey(companyId));
-      _state = raw ? (JSON.parse(raw) as DatabaseState) : createInitialTenantState();
-      if (!_state.emailLog) _state.emailLog = [];
+      _state = raw ? migrate(JSON.parse(raw) as DatabaseState) : createInitialTenantState();
     } catch {
       _state = createInitialTenantState();
     }
@@ -54,8 +84,7 @@ export const TenantDB = {
         headers: { Authorization: `Bearer ${_token}` },
       });
       if (!res.ok) return null;
-      const data = (await res.json()) as DatabaseState;
-      if (!data.emailLog) data.emailLog = [];
+      const data = migrate((await res.json()) as DatabaseState);
       // Update in-memory + localStorage
       _companyId = companyId;
       _state = data;

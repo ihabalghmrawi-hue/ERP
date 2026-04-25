@@ -9,11 +9,22 @@ export interface Account {
   balance: number;
 }
 
+export type JESourceType =
+  | "invoice" | "payment" | "refund"
+  | "purchase" | "purchase_payment"
+  | "reversal" | "adjustment" | "manual";
+
 export interface JournalLine {
   accountId: string;
   accountName: string;
   debit: number;
   credit: number;
+  // Multi-currency (optional — falls back to base currency)
+  currency?: string;
+  exchangeRate?: number;   // rate to base currency (e.g. 1 USD = 3.75 SAR → 3.75)
+  foreignDebit?: number;   // amount in foreign currency
+  foreignCredit?: number;
+  description?: string;    // line-level memo
 }
 
 export interface JournalEntry {
@@ -21,9 +32,38 @@ export interface JournalEntry {
   date: string;
   reference: string;
   description: string;
-  status: "posted" | "draft";
-  createdBy: string;
+  status: "posted" | "draft" | "reversed";
   lines: JournalLine[];
+  // Source mapping
+  sourceType: JESourceType;
+  sourceId: string;
+  // Reversal linkage
+  reversalOf?: string;
+  reversedBy?: string;
+  // Full audit trail
+  createdBy: string;
+  createdAt: string;       // ISO timestamp
+  approvedBy?: string;
+  approvedAt?: string;
+  reversedByUser?: string; // user who triggered the reversal
+  reversedAt?: string;
+  // Currency
+  currency?: string;       // document currency (if different from base)
+  exchangeRate?: number;
+}
+
+// ─── Financial Periods ────────────────────────────────────────────
+export interface FinancialPeriod {
+  id: string;
+  name: string;          // e.g. "يناير 2025"
+  startDate: string;     // YYYY-MM-DD
+  endDate: string;
+  status: "open" | "closed";
+  closedBy?: string;
+  closedAt?: string;
+  openedBy?: string;
+  openedAt?: string;
+  notes?: string;
 }
 
 export interface Customer {
@@ -90,7 +130,7 @@ export interface Invoice {
   dueDate: string;
   customerId: string;
   customerName: string;
-  status: "paid" | "outstanding" | "overdue";
+  status: "paid" | "outstanding" | "overdue" | "returned";
   paymentType: "cash" | "credit";
   currency: string;
   lines: InvoiceLine[];
@@ -103,10 +143,14 @@ export interface Invoice {
   amountDue?: number;
   notes?: string;
   journalEntryId?: string;
-  approvalStatus?: "pending" | "approved" | "rejected"; // undefined = legacy (treated as approved)
+  approvalStatus?: "pending" | "approved" | "rejected";
   approvedBy?: string;
   approvedAt?: string;
   rejectedReason?: string;
+  // Returns
+  isReturned?: boolean;
+  returnJEId?: string;
+  returnDate?: string;
 }
 
 export interface POLine {
@@ -126,7 +170,7 @@ export interface PurchaseOrder {
   date: string;
   supplierId: string;
   supplierName: string;
-  status: "pending" | "received" | "partial";
+  status: "pending" | "received" | "partial" | "returned";
   currency: string;
   lines: POLine[];
   subtotal: number;
@@ -137,6 +181,10 @@ export interface PurchaseOrder {
   amountPaid: number;
   amountDue: number;
   journalEntryId?: string;
+  // Returns
+  isReturned?: boolean;
+  returnJEId?: string;
+  returnDate?: string;
 }
 
 export interface TreasuryTransaction {
@@ -283,8 +331,9 @@ export interface DatabaseState {
   activityLog: ActivityLog[];
   emailLog: EmailLog[];
   bankStatements: BankStatement[];
+  financialPeriods: FinancialPeriod[];
   settings: AppSettings;
-  counters: { je: number; inv: number; po: number; tx: number; bs: number };
+  counters: { je: number; inv: number; po: number; tx: number; bs: number; fp: number };
 }
 
 // ─── Default Chart of Accounts ─────────────────────────────────
@@ -330,6 +379,7 @@ export function createInitialDatabaseState(): DatabaseState {
     activityLog: [],
     emailLog: [],
     bankStatements: [],
+    financialPeriods: [],
     settings: {
       companyName: "",
       taxNumber: "",
@@ -345,7 +395,7 @@ export function createInitialDatabaseState(): DatabaseState {
       lockedPeriods: [],
       requireInvoiceApproval: false,
     },
-    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1 },
+    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1 },
   };
 }
 

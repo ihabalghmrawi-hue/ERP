@@ -38,6 +38,10 @@ export function Purchases({ addToast }: Props) {
 
   const [pos, setPOs]       = useState<PurchaseOrder[]>([...db.purchaseOrders]);
   const [showModal, setShowModal] = useState(false);
+  const [payPO, setPayPO]       = useState<PurchaseOrder | null>(null);
+  const [jePO, setJePO]         = useState<PurchaseOrder | null>(null);
+  const [returnPO, setReturnPO] = useState<PurchaseOrder | null>(null);
+  const [payAmount, setPayAmount] = useState("");
   const [vatEnabled,   setVatEnabled]   = useState(settings.vatEnabled   || false);
   const [vatInclusive, setVatInclusive] = useState(settings.vatInclusive || false);
   const [form, setForm] = useState({ supplierId: "", lines: [{ productId: "", qty: 1, unitCost: 0 }] as LineForm[] });
@@ -85,6 +89,41 @@ export function Purchases({ addToast }: Props) {
     } catch (e: any) { addToast(e.message, "error"); }
   };
 
+  const handleRegisterPayment = (po: PurchaseOrder) => {
+    const amount = parseFloat(payAmount);
+    if (!amount || amount <= 0 || amount > (po.amountDue || 0)) {
+      addToast("أدخل مبلغاً صحيحاً لا يتجاوز المبلغ المستحق", "error"); return;
+    }
+    try {
+      const je = AccountingEngine.postCashPayment(po.supplierId, amount, `تسديد جزئي لأمر الشراء ${po.id}`, po.id);
+      po.amountPaid = (po.amountPaid || 0) + amount;
+      po.amountDue  = Math.max(0, (po.amountDue || 0) - amount);
+      if (po.amountDue === 0) po.status = "received";
+      DB.save();
+      setPOs([...db.purchaseOrders]);
+      logActivity(user?.id || "", user?.name || "", "UPDATE", "Purchases", `سدد ${fmt(amount)} على أمر الشراء ${po.id} (قيد: ${je.id})`);
+      addToast(`تم تسجيل الدفع ${fmt(amount)} — قيد: ${je.id}`, "success");
+      setPayPO(null);
+      setPayAmount("");
+    } catch (e: any) { addToast(e.message, "error"); }
+  };
+
+  const handleReturn = (po: PurchaseOrder) => {
+    try {
+      const je = AccountingEngine.postPurchaseReturn(po);
+      po.isReturned  = true;
+      po.returnJEId  = je.id;
+      po.returnDate  = new Date().toISOString().slice(0, 10);
+      po.status      = "returned" as any;
+      po.amountDue   = 0;
+      DB.save();
+      setPOs([...db.purchaseOrders]);
+      logActivity(user?.id || "", user?.name || "", "RETURN", "Purchases", `مرتجع أمر الشراء ${po.id} — قيد عكسي: ${je.id}`);
+      addToast(`تم ترحيل مرتجع أمر الشراء ${po.id} — قيد: ${je.id}`, "success");
+      setReturnPO(null);
+    } catch (e: any) { addToast(e.message, "error"); }
+  };
+
   const totals = {
     total: pos.reduce((s, p) => s + p.total, 0),
     paid:  pos.reduce((s, p) => s + (p.amountPaid || 0), 0),
@@ -113,15 +152,27 @@ export function Purchases({ addToast }: Props) {
         </div>
         <DataTable
           headers={[
+            { label: "" },
             { label: t("jeRef") }, { label: t("status") }, { label: t("due") },
             { label: t("paid") }, { label: "ضريبة" }, { label: t("total") },
             { label: t("supplier") }, { label: t("date") }, { label: "رقم الأمر" },
           ]}
           rows={pos.map((po) => [
+            <span key="acts" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {(po.journalEntryId || po.returnJEId) && (
+                <button onClick={() => setJePO(po)} style={{ ...S.btn("outline"), padding: "3px 8px", fontSize: 11 }}>📒</button>
+              )}
+              {(po.amountDue || 0) > 0 && !po.isReturned && (
+                <button onClick={() => { setPayPO(po); setPayAmount(String(po.amountDue || "")); }} style={{ ...S.btn("sm"), background: C.warning, color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>💰 دفع</button>
+              )}
+              {!po.isReturned && (
+                <button onClick={() => setReturnPO(po)} style={{ ...S.btn("sm"), background: C.danger, color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>↩ مرتجع</button>
+              )}
+            </span>,
             <span key="je" style={{ color: C.purple, fontSize: 12 }}>{po.journalEntryId || "—"}</span>,
             <StatusBadge key="st" status={po.status} />,
-            <span key="due" style={{ color: po.amountDue > 0 ? C.danger : C.success, fontWeight: 700 }}>{fmt(po.amountDue)}</span>,
-            fmt(po.amountPaid),
+            <span key="due" style={{ color: (po.amountDue || 0) > 0 ? C.danger : C.success, fontWeight: 700 }}>{fmt(po.amountDue || 0)}</span>,
+            fmt(po.amountPaid || 0),
             <span key="tax" style={{ fontSize: 12, color: (po.taxAmount || 0) > 0 ? C.warning : C.textMuted }}>
               {(po.taxAmount || 0) > 0 ? fmt(po.taxAmount) : "معفى"}
             </span>,
@@ -132,6 +183,129 @@ export function Purchases({ addToast }: Props) {
           emptyMsg={t("noPOsYet")}
         />
       </div>
+
+      {/* Payment Registration Modal */}
+      {payPO && (
+        <Modal title={`تسجيل دفع للمورد — ${payPO.id}`} onClose={() => { setPayPO(null); setPayAmount(""); }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textSec, marginBottom: 8 }}>
+              <span>إجمالي أمر الشراء</span><span style={{ fontWeight: 700 }}>{fmt(payPO.total)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.success, marginBottom: 8 }}>
+              <span>المدفوع سابقاً</span><span style={{ fontWeight: 700 }}>{fmt(payPO.amountPaid || 0)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 800, color: C.danger, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+              <span>المبلغ المستحق للمورد</span><span>{fmt(payPO.amountDue || 0)}</span>
+            </div>
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>المبلغ المُدفَع *</label>
+            <input
+              style={S.input} type="number" min="0.01" step="0.01"
+              max={payPO.amountDue || 0}
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              placeholder="أدخل المبلغ"
+            />
+          </div>
+          <div style={{ background: C.warningLight, borderRadius: 7, padding: 10, marginBottom: 16, fontSize: 12, color: C.warning }}>
+            سيتم تسجيل قيد: مدين الموردون / دائن الصندوق
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+            <button style={{ ...S.btn("outline") }} onClick={() => { setPayPO(null); setPayAmount(""); }}>إلغاء</button>
+            <button style={{ ...S.btn("primary"), border: "none" }} onClick={() => handleRegisterPayment(payPO)}>✓ تسجيل الدفع</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Return Confirmation Modal */}
+      {returnPO && (
+        <Modal title={`مرتجع مشتريات — ${returnPO.id}`} onClose={() => setReturnPO(null)}>
+          <div style={{ background: "#FFF3CD", border: `1px solid ${C.warning}`, borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#856404" }}>
+            ⚠️ سيتم إنشاء <strong>قيد عكسي</strong> يلغي الشراء ويُزيل المخزون. هذا الإجراء لا يمكن التراجع عنه.
+          </div>
+          <div style={{ fontSize: 14, marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: C.textSec }}>أمر الشراء</span><strong>{returnPO.id}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: C.textSec }}>المورد</span><strong>{returnPO.supplierName}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: C.textSec }}>الإجمالي</span><strong style={{ color: C.danger }}>{fmt(returnPO.total)}</strong>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+            <button style={{ ...S.btn("outline") }} onClick={() => setReturnPO(null)}>إلغاء</button>
+            <button style={{ ...S.btn("danger"), border: "none" }} onClick={() => handleReturn(returnPO)}>↩ تأكيد المرتجع وترحيل القيد</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Journal Entry Viewer */}
+      {jePO && (() => {
+        const allJEs = DB.get().journalEntries;
+        const jeIds = [jePO.journalEntryId, jePO.returnJEId].filter(Boolean) as string[];
+        const jes = jeIds.map(id => allJEs.find(j => j.id === id)).filter(Boolean) as typeof allJEs;
+        const srcLabel: Record<string, string> = {
+          invoice: "فاتورة مبيعات", payment: "سند قبض", refund: "مرتجع",
+          purchase: "فاتورة شراء", purchase_payment: "سند دفع", reversal: "قيد عكسي", manual: "يدوي",
+        };
+        return (
+          <Modal title={`القيود المحاسبية — ${jePO.id}`} onClose={() => setJePO(null)} wide>
+            {jes.length === 0 && (
+              <div style={{ color: C.textMuted, padding: 20, textAlign: "center" }}>لا توجد قيود مرتبطة</div>
+            )}
+            {jes.map((je) => (
+              <div key={je.id} style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontWeight: 800, color: C.purple, fontSize: 14 }}>{je.id}</span>
+                  <span style={{ fontSize: 12, color: C.textSec }}>{je.date}</span>
+                  <span style={{ ...S.badge(je.status === "reversed" ? "danger" : "success"), fontSize: 11 }}>
+                    {je.status === "reversed" ? "✗ معكوس" : "✓ مرحّل"}
+                  </span>
+                  <span style={{ ...S.badge("info"), fontSize: 11 }}>{srcLabel[je.sourceType] || je.sourceType}</span>
+                  {je.reversalOf && <span style={{ fontSize: 11, color: C.warning }}>يعكس: {je.reversalOf}</span>}
+                  {je.reversedBy && <span style={{ fontSize: 11, color: C.danger }}>معكوس بـ: {je.reversedBy}</span>}
+                  <span style={{ fontSize: 12, color: C.textMuted, flex: 1 }}>{je.description}</span>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: C.accent, color: "#fff" }}>
+                      {["الحساب", "مدين", "دائن"].map(h => (
+                        <th key={h} style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {je.lines.map((line, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? C.surfaceAlt : C.surface, borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: "8px 12px" }}>{line.accountName}</td>
+                        <td style={{ padding: "8px 12px", color: line.debit > 0 ? C.success : C.textMuted, fontWeight: line.debit > 0 ? 700 : 400, direction: "ltr" }}>
+                          {line.debit > 0 ? fmt(line.debit) : "—"}
+                        </td>
+                        <td style={{ padding: "8px 12px", color: line.credit > 0 ? C.danger : C.textMuted, fontWeight: line.credit > 0 ? 700 : 400, direction: "ltr" }}>
+                          {line.credit > 0 ? fmt(line.credit) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: C.surfaceAlt, fontWeight: 800, borderTop: `2px solid ${C.border}` }}>
+                      <td style={{ padding: "8px 12px" }}>الإجمالي</td>
+                      <td style={{ padding: "8px 12px", color: C.success, direction: "ltr" }}>{fmt(je.lines.reduce((s, l) => s + (l.debit || 0), 0))}</td>
+                      <td style={{ padding: "8px 12px", color: C.danger, direction: "ltr" }}>{fmt(je.lines.reduce((s, l) => s + (l.credit || 0), 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 4 }}>
+              <button style={{ ...S.btn("outline") }} onClick={() => setJePO(null)}>إغلاق</button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {showModal && (
         <Modal title={t("createPO")} onClose={() => setShowModal(false)} wide>

@@ -173,9 +173,24 @@ export function getDefaultPermissions(role: UserRole): Permission[] {
   return [...(ROLE_PERMISSIONS[role] ?? [])];
 }
 
-// Check if a date falls in a locked accounting period
-export function isPeriodLocked(date: string, lockedPeriods: string[]): boolean {
-  if (!lockedPeriods?.length) return false;
-  const period = date.slice(0, 7); // "YYYY-MM"
-  return lockedPeriods.includes(period);
+// Check if a date falls in a locked accounting period.
+// Checks both the legacy string array (settings.lockedPeriods) and
+// the FinancialPeriod entities (db.financialPeriods).
+export function isPeriodLocked(
+  date: string,
+  lockedPeriods: string[],
+  financialPeriods?: { startDate: string; endDate: string; status: string }[]
+): boolean {
+  // Legacy: YYYY-MM string list
+  if (lockedPeriods?.length) {
+    const ym = date.slice(0, 7);
+    if (lockedPeriods.includes(ym)) return true;
+  }
+  // Financial period entities
+  if (financialPeriods?.length) {
+    return financialPeriods.some(
+      (p) => p.status === "closed" && date >= p.startDate && date <= p.endDate
+    );
+  }
+  return false;
 }

@@ -1,14 +1,22 @@
-import { DB, JournalLine, Invoice, PurchaseOrder, Customer, Supplier, Account } from "../db/database";
+import { DB, JournalLine, JournalEntry, JESourceType, Invoice, PurchaseOrder, Account, FinancialPeriod } from "../db/database";
 import { InventoryManager } from "./inventory";
+import { isPeriodLocked } from "./permissions";
 
-/**
- * محرك المحاسبة المتقدم - Full Accounting Engine
- * يدعم جميع العمليات المحاسبية مع القيد المزدوج التلقائي
- * ومتكامل مع نظام إدارة المخزون
- */
+export interface GeneralLedgerEntry {
+  jeId: string;
+  date: string;
+  description: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+  sourceType: JESourceType;
+  sourceId: string;
+  status: JournalEntry["status"];
+}
+
 export const AccountingEngine = {
   // ─────────────────────────────────────────────────────────────────
-  // أدوات مساعدة للعثور على الحسابات
+  // Account lookup helpers
   // ─────────────────────────────────────────────────────────────────
 
   getAccountByCode(code: string): Account | null {
@@ -20,14 +28,16 @@ export const AccountingEngine = {
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // Helpers: compute account balances for a date range / as-of date
+  // Period balance computation (for date-filtered reports)
   // ─────────────────────────────────────────────────────────────────
+
   _computePeriodBalances(startDate?: string, endDate?: string): Record<string, number> {
     const db = DB.get();
     const balances: Record<string, number> = {};
     db.accounts.forEach((a) => (balances[a.id] = 0));
 
     db.journalEntries.forEach((je) => {
+      if (je.status === "reversed") return; // skip reversed entries
       const d = je.date;
       if (startDate && d < startDate) return;
       if (endDate && d > endDate) return;
@@ -40,35 +50,76 @@ export const AccountingEngine = {
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // Core: ترحيل قيد يومية
+  // Core: post journal entry — validates balance before saving
   // ─────────────────────────────────────────────────────────────────
 
-  postJE(description: string, reference: string, lines: JournalLine[]) {
+  postJE(
+    description: string,
+    reference: string,
+    lines: JournalLine[],
+    sourceType: JESourceType = "manual",
+    sourceId: string = "",
+    extra?: {
+      reversalOf?: string;
+      createdBy?: string;
+      date?: string;           // override posting date (for backdated entries)
+      currency?: string;
+      exchangeRate?: number;
+    }
+  ): JournalEntry {
     const db = DB.get();
-    const id = `JE-${String(DB.nextId("je")).padStart(4, "0")}`;
+    const now = new Date().toISOString();
+    const postingDate = extra?.date || now.slice(0, 10);
 
-    const totalD = lines.reduce((s, l) => s + l.debit, 0);
-    const totalC = lines.reduce((s, l) => s + l.credit, 0);
-    if (Math.abs(totalD - totalC) > 0.01) {
-      throw new Error(`القيد غير متوازن: مدين ${totalD.toFixed(2)} ≠ دائن ${totalC.toFixed(2)}`);
+    // ── Period lock check ──────────────────────────────────
+    if (isPeriodLocked(postingDate, db.settings.lockedPeriods ?? [], db.financialPeriods ?? [])) {
+      throw new Error(
+        `الفترة المحاسبية ${postingDate.slice(0, 7)} مغلقة — لا يمكن ترحيل قيود فيها. أعِد فتح الفترة أولاً.`
+      );
     }
 
-    const entry = {
+    // ── Integrity: at least 2 lines ─────────────────────────
+    if (lines.length < 2) {
+      throw new Error("القيد يجب أن يحتوي على سطرين على الأقل (مدين ودائن)");
+    }
+
+    // ── Integrity: debits must equal credits ────────────────
+    const totalD = lines.reduce((s, l) => s + (l.debit || 0), 0);
+    const totalC = lines.reduce((s, l) => s + (l.credit || 0), 0);
+    if (Math.abs(totalD - totalC) > 0.005) {
+      throw new Error(
+        `القيد غير متوازن: مجموع المدين ${totalD.toFixed(2)} ≠ مجموع الدائن ${totalC.toFixed(2)} — تم رفض الترحيل`
+      );
+    }
+
+    // ── Integrity: no zero-value lines ──────────────────────
+    if (lines.some((l) => (l.debit || 0) === 0 && (l.credit || 0) === 0)) {
+      throw new Error("القيد يحتوي على سطر بقيمة صفر — يرجى حذف السطور الفارغة");
+    }
+
+    const id = `JE-${String(DB.nextId("je")).padStart(4, "0")}`;
+    const entry: JournalEntry = {
       id,
-      date: new Date().toISOString().slice(0, 10),
+      date: postingDate,
       reference,
       description,
-      status: "posted" as const,
-      createdBy: "system",
+      status: "posted",
       lines,
+      sourceType,
+      sourceId: sourceId || reference,
+      createdBy: extra?.createdBy || "system",
+      createdAt: now,
+      ...(extra?.currency    ? { currency: extra.currency }       : {}),
+      ...(extra?.exchangeRate ? { exchangeRate: extra.exchangeRate } : {}),
+      ...(extra?.reversalOf  ? { reversalOf: extra.reversalOf }   : {}),
     };
 
     db.journalEntries.unshift(entry);
 
-    // تحديث أرصدة الحسابات
+    // Update account running balances
     lines.forEach(({ accountId, debit, credit }) => {
       const acc = db.accounts.find((a) => a.id === accountId);
-      if (acc) acc.balance = (acc.balance || 0) + debit - credit;
+      if (acc) acc.balance = (acc.balance || 0) + (debit || 0) - (credit || 0);
     });
 
     DB.save();
@@ -76,385 +127,589 @@ export const AccountingEngine = {
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // المبيعات والمرتجعات
+  // Reversal Engine — reverse any posted JE
   // ─────────────────────────────────────────────────────────────────
 
-  postSalesInvoice(invoice: Invoice) {
+  reverseJE(jeId: string, description?: string, reversedByUser?: string): JournalEntry {
     const db = DB.get();
+    const original = db.journalEntries.find((je) => je.id === jeId);
 
-    const arAcc = this.getAccountByCode("1100"); // ذمم مدينة
-    const revAcc = this.getAccountByCode("4000"); // إيراد المبيعات
-    const taxAcc = this.getAccountByCode("2200"); // ضريبة مبيعات
-    const cogsAcc = this.getAccountByCode("5000"); // تكلفة البضاعة
-    const invAcc = this.getAccountByCode("1200"); // المخزون
-    const cashAcc = this.getAccountByCode("1010"); // الصندوق
+    // ── Validation ──────────────────────────────────────────
+    if (!original) throw new Error(`القيد ${jeId} غير موجود`);
+    if (original.status === "reversed") {
+      throw new Error(`القيد ${jeId} تم عكسه مسبقاً بالقيد ${original.reversedBy} — لا يمكن عكسه مرة أخرى`);
+    }
+    if (original.status === "draft") {
+      throw new Error(`لا يمكن عكس قيد في حالة مسودة (draft)`);
+    }
 
-    if (!revAcc || !cogsAcc || !invAcc) {
+    // ── Period lock: reversal date must be in an open period ─
+    const today = new Date().toISOString().slice(0, 10);
+    if (isPeriodLocked(today, db.settings.lockedPeriods ?? [], db.financialPeriods ?? [])) {
       throw new Error(
-        "يرجى إنشاء الحسابات المحاسبية الأساسية أولاً:\n• 4000 - إيراد المبيعات\n• 5000 - تكلفة البضاعة المباعة\n• 1200 - المخزون"
+        `الفترة الحالية ${today.slice(0, 7)} مغلقة — لا يمكن ترحيل القيد العكسي فيها. أعِد فتح الفترة أولاً.`
       );
     }
 
-    // حساب تكلفة البضاعة (FIFO) وتسجيل حركات المخزون
+    const now = new Date().toISOString();
+    const reversedLines: JournalLine[] = original.lines.map((l) => ({
+      accountId:    l.accountId,
+      accountName:  l.accountName,
+      debit:        l.credit,
+      credit:       l.debit,
+      currency:     l.currency,
+      exchangeRate: l.exchangeRate,
+      foreignDebit: l.foreignCredit,
+      foreignCredit: l.foreignDebit,
+    }));
+
+    const reversal = this.postJE(
+      description || `عكس القيد ${jeId} — ${original.description}`,
+      `REV-${original.reference}`,
+      reversedLines,
+      "reversal",
+      jeId,
+      { reversalOf: jeId, createdBy: reversedByUser || "system" }
+    );
+
+    // Mark original as fully reversed with audit trail
+    original.status        = "reversed";
+    original.reversedBy    = reversal.id;
+    original.reversedByUser = reversedByUser || "system";
+    original.reversedAt    = now;
+    DB.save();
+
+    return reversal;
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Financial Period Management
+  // ─────────────────────────────────────────────────────────────────
+
+  createPeriod(
+    name: string,
+    startDate: string,
+    endDate: string,
+    createdBy: string
+  ): FinancialPeriod {
+    const db = DB.get();
+    if (!db.financialPeriods) db.financialPeriods = [];
+
+    // Overlap check
+    const overlap = db.financialPeriods.find(
+      (p) => startDate <= p.endDate && endDate >= p.startDate
+    );
+    if (overlap) {
+      throw new Error(`يتداخل مع الفترة "${overlap.name}" (${overlap.startDate} → ${overlap.endDate})`);
+    }
+
+    const period: FinancialPeriod = {
+      id: `FP-${String(DB.nextId("fp")).padStart(3, "0")}`,
+      name,
+      startDate,
+      endDate,
+      status: "open",
+      openedBy: createdBy,
+      openedAt: new Date().toISOString(),
+    };
+
+    db.financialPeriods.push(period);
+    db.financialPeriods.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    DB.save();
+    return period;
+  },
+
+  closePeriod(periodId: string, closedBy: string): FinancialPeriod {
+    const db = DB.get();
+    const period = db.financialPeriods?.find((p) => p.id === periodId);
+    if (!period) throw new Error(`الفترة ${periodId} غير موجودة`);
+    if (period.status === "closed") throw new Error(`الفترة "${period.name}" مغلقة مسبقاً`);
+
+    period.status   = "closed";
+    period.closedBy = closedBy;
+    period.closedAt = new Date().toISOString();
+    DB.save();
+    return period;
+  },
+
+  openPeriod(periodId: string, openedBy: string): FinancialPeriod {
+    const db = DB.get();
+    const period = db.financialPeriods?.find((p) => p.id === periodId);
+    if (!period) throw new Error(`الفترة ${periodId} غير موجودة`);
+    if (period.status === "open") throw new Error(`الفترة "${period.name}" مفتوحة مسبقاً`);
+
+    period.status   = "open";
+    period.openedBy = openedBy;
+    period.openedAt = new Date().toISOString();
+    DB.save();
+    return period;
+  },
+
+  getPeriodForDate(date: string): FinancialPeriod | null {
+    const db = DB.get();
+    return db.financialPeriods?.find(
+      (p) => date >= p.startDate && date <= p.endDate
+    ) || null;
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Sales Invoice Posting
+  // ─────────────────────────────────────────────────────────────────
+
+  postSalesInvoice(invoice: Invoice): JournalEntry {
+    // Guard: no double posting
+    if (invoice.journalEntryId) {
+      const db = DB.get();
+      const existing = db.journalEntries.find((je) => je.id === invoice.journalEntryId);
+      if (existing && existing.status !== "reversed") {
+        throw new Error(`الفاتورة ${invoice.id} مرحّلة مسبقاً (قيد: ${invoice.journalEntryId})`);
+      }
+    }
+
+    const db = DB.get();
+    const arAcc   = this.getAccountByCode("1100");
+    const revAcc  = this.getAccountByCode("4000");
+    const taxAcc  = this.getAccountByCode("2200");
+    const cogsAcc = this.getAccountByCode("5000");
+    const invAcc  = this.getAccountByCode("1200");
+    const cashAcc = this.getAccountByCode("1010");
+
+    if (!revAcc || !cogsAcc || !invAcc) {
+      throw new Error(
+        "يرجى إنشاء الحسابات المحاسبية الأساسية:\n• 4000 - إيراد المبيعات\n• 5000 - تكلفة البضاعة\n• 1200 - المخزون"
+      );
+    }
+
+    // Compute COGS and update inventory
     let totalCOGS = 0;
     invoice.lines.forEach((line) => {
       const p = db.products.find((x) => x.id === line.productId);
       if (p) {
         totalCOGS += p.unitCost * line.qty;
-        // تحديث المخزون
         p.qty = (p.qty || 0) - line.qty;
-        
-        // تسجيل حركة المخزون
         try {
           InventoryManager.recordMovement("out", line.productId, line.qty, invoice.id, {
-            notes: `مبيعة - فاتورة #${invoice.id}`,
+            notes: `مبيعة — فاتورة ${invoice.id}`,
             createdBy: "system",
           });
-        } catch (e) {
-          // إذا فشل التسجيل، نتابع مع العميلية (المخزون تم تحديثه بالفعل)
-        }
+        } catch {}
       }
     });
 
-    const isCredit = invoice.paymentType === "credit";
+    const isCredit  = invoice.paymentType === "credit";
     const drAccount = isCredit ? arAcc : cashAcc;
-    if (!drAccount) {
-      throw new Error("لم يتم العثور على حساب العميل أو الصندوق");
-    }
+    if (!drAccount) throw new Error("لم يتم العثور على حساب الذمم أو الصندوق");
 
+    // Lines: DR [AR or Cash] / CR Revenue / CR VAT Payable
     const lines: JournalLine[] = [
       { accountId: drAccount.id, accountName: drAccount.name, debit: invoice.total, credit: 0 },
-      { accountId: revAcc.id, accountName: revAcc.name, debit: 0, credit: invoice.subtotal },
+      { accountId: revAcc.id,    accountName: revAcc.name,    debit: 0, credit: invoice.subtotal },
     ];
 
-    if (taxAcc && invoice.taxAmount > 0) {
+    if (taxAcc && (invoice.taxAmount || 0) > 0) {
       lines.push({ accountId: taxAcc.id, accountName: taxAcc.name, debit: 0, credit: invoice.taxAmount });
     }
 
+    // COGS: DR COGS / CR Inventory
     if (totalCOGS > 0) {
       lines.push({ accountId: cogsAcc.id, accountName: cogsAcc.name, debit: totalCOGS, credit: 0 });
-      lines.push({ accountId: invAcc.id, accountName: invAcc.name, debit: 0, credit: totalCOGS });
+      lines.push({ accountId: invAcc.id,  accountName: invAcc.name,  debit: 0, credit: totalCOGS });
     }
 
-    // تحديث رصيد العميل
+    // Update customer AR balance
     const cust = db.customers.find((c) => c.id === invoice.customerId);
     if (cust && isCredit) {
       cust.balance = (cust.balance || 0) + invoice.total;
     }
 
-    return this.postJE(`فاتورة مبيعات - ${invoice.customerName}`, invoice.id, lines);
+    return this.postJE(
+      `فاتورة مبيعات — ${invoice.customerName}`,
+      invoice.id,
+      lines,
+      "invoice",
+      invoice.id
+    );
   },
 
-  postSalesReturn(invoice: Invoice) {
-    const db = DB.get();
+  // ─────────────────────────────────────────────────────────────────
+  // Sales Return — reverses original JE + restores inventory
+  // ─────────────────────────────────────────────────────────────────
 
-    const arAcc = this.getAccountByCode("1100");
-    const revAcc = this.getAccountByCode("4000");
-    const taxAcc = this.getAccountByCode("2200");
-    const cogsAcc = this.getAccountByCode("5000");
-    const invAcc = this.getAccountByCode("1200");
-
-    if (!revAcc || !cogsAcc || !invAcc) {
-      throw new Error("الحسابات الأساسية غير موجودة");
+  postSalesReturn(invoice: Invoice): JournalEntry {
+    if (invoice.isReturned) {
+      throw new Error(`الفاتورة ${invoice.id} تم إرجاعها مسبقاً`);
     }
 
-    let totalCOGS = 0;
+    const db = DB.get();
+
+    // Restore inventory
     invoice.lines.forEach((line) => {
       const p = db.products.find((x) => x.id === line.productId);
       if (p) {
-        totalCOGS += p.unitCost * line.qty;
-        // إرجاع المخزون
         p.qty = (p.qty || 0) + line.qty;
-        
-        // تسجيل حركة المخزون (إدخال)
         try {
           InventoryManager.recordMovement("in", line.productId, line.qty, invoice.id, {
-            notes: `مرتجع مبيعات - فاتورة #${invoice.id}`,
+            notes: `مرتجع مبيعات — فاتورة ${invoice.id}`,
             createdBy: "system",
           });
-        } catch (e) {
-          // نتابع مع العملية
-        }
+        } catch {}
       }
     });
 
-    const lines: JournalLine[] = [
-      { accountId: revAcc.id, accountName: revAcc.name, debit: invoice.subtotal, credit: 0 },
-      { accountId: arAcc!.id, accountName: arAcc!.name, debit: 0, credit: invoice.total },
-    ];
-
-    if (taxAcc && invoice.taxAmount > 0) {
-      lines.push({ accountId: taxAcc.id, accountName: taxAcc.name, debit: invoice.taxAmount, credit: 0 });
+    // Reverse customer balance
+    const cust = db.customers.find((c) => c.id === invoice.customerId);
+    if (cust && invoice.paymentType === "credit") {
+      cust.balance = Math.max(0, (cust.balance || 0) - invoice.total);
     }
 
+    // If original JE exists: reverse it
+    if (invoice.journalEntryId) {
+      return this.reverseJE(
+        invoice.journalEntryId,
+        `مرتجع مبيعات — ${invoice.customerName} (فاتورة ${invoice.id})`
+      );
+    }
+
+    // No original JE: build manual reversal entry
+    const arAcc   = this.getAccountByCode("1100");
+    const revAcc  = this.getAccountByCode("4000");
+    const taxAcc  = this.getAccountByCode("2200");
+    const cogsAcc = this.getAccountByCode("5000");
+    const invAcc  = this.getAccountByCode("1200");
+
+    if (!revAcc || !cogsAcc || !invAcc) throw new Error("الحسابات الأساسية غير موجودة");
+
+    let totalCOGS = 0;
+    invoice.lines.forEach((l) => {
+      const p = db.products.find((x) => x.id === l.productId);
+      if (p) totalCOGS += p.unitCost * l.qty;
+    });
+
+    const lines: JournalLine[] = [
+      { accountId: revAcc.id,   accountName: revAcc.name,   debit: invoice.subtotal, credit: 0 },
+      { accountId: arAcc!.id,   accountName: arAcc!.name,   debit: 0, credit: invoice.total },
+    ];
+    if (taxAcc && (invoice.taxAmount || 0) > 0) {
+      lines.push({ accountId: taxAcc.id, accountName: taxAcc.name, debit: invoice.taxAmount, credit: 0 });
+    }
     if (totalCOGS > 0) {
-      lines.push({ accountId: invAcc.id, accountName: invAcc.name, debit: totalCOGS, credit: 0 });
+      lines.push({ accountId: invAcc.id,  accountName: invAcc.name,  debit: totalCOGS, credit: 0 });
       lines.push({ accountId: cogsAcc.id, accountName: cogsAcc.name, debit: 0, credit: totalCOGS });
     }
 
-    // تقليل رصيد العميل
-    const cust = db.customers.find((c) => c.id === invoice.customerId);
-    if (cust) {
-      cust.balance = (cust.balance || 0) - invoice.total;
-    }
-
-    return this.postJE(`مرتجع مبيعات - ${invoice.customerName}`, invoice.id, lines);
+    return this.postJE(
+      `مرتجع مبيعات — ${invoice.customerName} (فاتورة ${invoice.id})`,
+      `RET-${invoice.id}`,
+      lines,
+      "refund",
+      invoice.id
+    );
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // المشتريات والمرتجعات
+  // Purchase Invoice Posting
   // ─────────────────────────────────────────────────────────────────
 
-  postPurchaseInvoice(po: PurchaseOrder) {
-    const db = DB.get();
-
-    const invAcc    = this.getAccountByCode("1200"); // المخزون
-    const apAcc     = this.getAccountByCode("2010"); // ذمم دائنة
-    const vatRecAcc = this.getAccountByCode("2100"); // ضريبة المدخلات
-
-    if (!invAcc || !apAcc) {
-      throw new Error("يرجى إنشاء الحسابات المحاسبية الأساسية:\n• 1200 - المخزون\n• 2010 - الذمم الدائنة");
+  postPurchaseInvoice(po: PurchaseOrder): JournalEntry {
+    // Guard: no double posting
+    if (po.journalEntryId) {
+      const db = DB.get();
+      const existing = db.journalEntries.find((je) => je.id === po.journalEntryId);
+      if (existing && existing.status !== "reversed") {
+        throw new Error(`أمر الشراء ${po.id} مرحّل مسبقاً (قيد: ${po.journalEntryId})`);
+      }
     }
 
-    // إضافة المخزون وتسجيل حركات (بتكلفة بدون ضريبة)
+    const db = DB.get();
+    const invAcc    = this.getAccountByCode("1200");
+    const apAcc     = this.getAccountByCode("2010");
+    const vatRecAcc = this.getAccountByCode("2100");
+
+    if (!invAcc || !apAcc) {
+      throw new Error("يرجى إنشاء الحسابات: 1200 - المخزون، 2010 - الذمم الدائنة");
+    }
+
+    // Receive inventory
     po.lines.forEach((line) => {
       const p = db.products.find((x) => x.id === line.productId);
       if (p) {
         p.qty = (p.qty || 0) + line.qty;
         try {
           InventoryManager.recordMovement("in", line.productId, line.qty, po.id, {
-            notes: `شراء - أمر الشراء #${po.id}`,
+            notes: `شراء — أمر الشراء ${po.id}`,
             createdBy: "system",
           });
-        } catch (e) {
-          // نتابع مع العملية
-        }
+        } catch {}
       }
     });
 
-    // تحديث رصيد المورد بالإجمالي (شامل الضريبة)
+    // Update supplier AP balance
     const supp = db.suppliers.find((s) => s.id === po.supplierId);
-    if (supp) {
-      supp.balance = (supp.balance || 0) + po.total;
-    }
+    if (supp) supp.balance = (supp.balance || 0) + po.total;
 
-    const jeLines: import("../db/database").JournalLine[] = [
+    // Lines: DR Inventory / DR VAT Recoverable / CR AP
+    const jeLines: JournalLine[] = [
       { accountId: invAcc.id, accountName: invAcc.name, debit: po.subtotal, credit: 0 },
     ];
-
-    if (vatRecAcc && po.taxAmount > 0) {
+    if (vatRecAcc && (po.taxAmount || 0) > 0) {
       jeLines.push({ accountId: vatRecAcc.id, accountName: vatRecAcc.name, debit: po.taxAmount, credit: 0 });
     }
-
     jeLines.push({ accountId: apAcc.id, accountName: apAcc.name, debit: 0, credit: po.total });
 
-    return this.postJE(`فاتورة شراء - ${po.supplierName}`, po.id, jeLines);
+    return this.postJE(
+      `فاتورة شراء — ${po.supplierName}`,
+      po.id,
+      jeLines,
+      "purchase",
+      po.id
+    );
   },
 
-  postPurchaseReturn(po: PurchaseOrder) {
-    const db = DB.get();
+  // ─────────────────────────────────────────────────────────────────
+  // Purchase Return — reverses original JE + removes inventory
+  // ─────────────────────────────────────────────────────────────────
 
-    const invAcc = this.getAccountByCode("1200");
-    const apAcc = this.getAccountByCode("2010");
-
-    if (!invAcc || !apAcc) {
-      throw new Error("الحسابات الأساسية غير موجودة");
+  postPurchaseReturn(po: PurchaseOrder): JournalEntry {
+    if (po.isReturned) {
+      throw new Error(`أمر الشراء ${po.id} تم إرجاعه مسبقاً`);
     }
 
-    // استرجاع المخزون وتسجيل حركات
+    const db = DB.get();
+
+    // Remove inventory
     po.lines.forEach((line) => {
       const p = db.products.find((x) => x.id === line.productId);
       if (p) {
-        p.qty = (p.qty || 0) - line.qty;
-        
-        // تسجيل حركة المخزون (إخراج)
+        p.qty = Math.max(0, (p.qty || 0) - line.qty);
         try {
           InventoryManager.recordMovement("out", line.productId, line.qty, po.id, {
-            notes: `مرتجع شراء - أمر الشراء #${po.id}`,
+            notes: `مرتجع شراء — أمر الشراء ${po.id}`,
             createdBy: "system",
           });
-        } catch (e) {
-          // نتابع مع العملية
-        }
+        } catch {}
       }
     });
 
-    // تقليل رصيد المورد
+    // Reverse supplier balance
     const supp = db.suppliers.find((s) => s.id === po.supplierId);
-    if (supp) {
-      supp.balance = (supp.balance || 0) - po.total;
+    if (supp) supp.balance = Math.max(0, (supp.balance || 0) - po.total);
+
+    // If original JE exists: reverse it
+    if (po.journalEntryId) {
+      return this.reverseJE(
+        po.journalEntryId,
+        `مرتجع شراء — ${po.supplierName} (أمر الشراء ${po.id})`
+      );
     }
 
-    return this.postJE(`مرتجع شراء - ${po.supplierName}`, po.id, [
-      { accountId: apAcc.id, accountName: apAcc.name, debit: po.total, credit: 0 },
-      { accountId: invAcc.id, accountName: invAcc.name, debit: 0, credit: po.total },
-    ]);
+    // Manual reversal entry
+    const invAcc = this.getAccountByCode("1200");
+    const apAcc  = this.getAccountByCode("2010");
+    if (!invAcc || !apAcc) throw new Error("الحسابات الأساسية غير موجودة");
+
+    return this.postJE(
+      `مرتجع شراء — ${po.supplierName} (أمر الشراء ${po.id})`,
+      `RET-${po.id}`,
+      [
+        { accountId: apAcc.id,  accountName: apAcc.name,  debit: po.total, credit: 0 },
+        { accountId: invAcc.id, accountName: invAcc.name, debit: 0, credit: po.total },
+      ],
+      "refund",
+      po.id
+    );
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // سندات القبض والدفع
+  // Cash Receipt (customer payment)
   // ─────────────────────────────────────────────────────────────────
 
-  postCashReceipt(customerId: string, amount: number, description: string = "") {
+  postCashReceipt(customerId: string, amount: number, description: string = "", invoiceId?: string): JournalEntry {
     const db = DB.get();
     const cashAcc = this.getAccountByCode("1010");
-    const arAcc = this.getAccountByCode("1100");
-
-    if (!cashAcc || !arAcc) throw new Error("الحسابات الأساسية غير موجودة");
+    const arAcc   = this.getAccountByCode("1100");
+    if (!cashAcc || !arAcc) throw new Error("الحسابات الأساسية غير موجودة (1010, 1100)");
 
     const customer = db.customers.find((c) => c.id === customerId);
     if (customer) {
-      customer.balance = (customer.balance || 0) - amount;
+      customer.balance = Math.max(0, (customer.balance || 0) - amount);
     }
 
     return this.postJE(
-      description || `سند قبض من ${customer?.name || "عميل"}`,
-      `RC-${Date.now()}`,
+      description || `سند قبض — ${customer?.name || "عميل"}`,
+      invoiceId ? `RC-${invoiceId}` : `RC-${Date.now()}`,
       [
-        { accountId: cashAcc.id, accountName: cashAcc.name, debit: amount, credit: 0 },
-        { accountId: arAcc.id, accountName: arAcc.name, debit: 0, credit: amount },
-      ]
-    );
-  },
-
-  postCashPayment(supplierId: string, amount: number, description: string = "") {
-    const db = DB.get();
-    const cashAcc = this.getAccountByCode("1010");
-    const apAcc = this.getAccountByCode("2010");
-
-    if (!cashAcc || !apAcc) throw new Error("الحسابات الأساسية غير موجودة");
-
-    const supplier = db.suppliers.find((s) => s.id === supplierId);
-    if (supplier) {
-      supplier.balance = (supplier.balance || 0) - amount;
-    }
-
-    return this.postJE(
-      description || `أمر دفع للمورد ${supplier?.name || "مورد"}`,
-      `PM-${Date.now()}`,
-      [
-        { accountId: apAcc.id, accountName: apAcc.name, debit: amount, credit: 0 },
-        { accountId: cashAcc.id, accountName: cashAcc.name, debit: 0, credit: amount },
-      ]
+        { accountId: cashAcc.id, accountName: cashAcc.name, debit: amount,  credit: 0 },
+        { accountId: arAcc.id,   accountName: arAcc.name,   debit: 0,       credit: amount },
+      ],
+      "payment",
+      invoiceId || customerId
     );
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // كشف الحسابات (Ledgers)
+  // Cash Payment (supplier payment)
+  // ─────────────────────────────────────────────────────────────────
+
+  postCashPayment(supplierId: string, amount: number, description: string = "", poId?: string): JournalEntry {
+    const db = DB.get();
+    const cashAcc = this.getAccountByCode("1010");
+    const apAcc   = this.getAccountByCode("2010");
+    if (!cashAcc || !apAcc) throw new Error("الحسابات الأساسية غير موجودة (1010, 2010)");
+
+    const supplier = db.suppliers.find((s) => s.id === supplierId);
+    if (supplier) {
+      supplier.balance = Math.max(0, (supplier.balance || 0) - amount);
+    }
+
+    return this.postJE(
+      description || `سند دفع — ${supplier?.name || "مورد"}`,
+      poId ? `PM-${poId}` : `PM-${Date.now()}`,
+      [
+        { accountId: apAcc.id,   accountName: apAcc.name,   debit: amount, credit: 0 },
+        { accountId: cashAcc.id, accountName: cashAcc.name, debit: 0,      credit: amount },
+      ],
+      "purchase_payment",
+      poId || supplierId
+    );
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // General Ledger — running balance per account
+  // ─────────────────────────────────────────────────────────────────
+
+  getGeneralLedger(
+    accountId: string,
+    startDate?: string,
+    endDate?: string
+  ): { account: Account | null; entries: GeneralLedgerEntry[]; openingBalance: number; closingBalance: number } {
+    const db = DB.get();
+    const account = db.accounts.find((a) => a.id === accountId) || null;
+
+    // Gather all JE lines for this account, sorted by date asc
+    const rawEntries = db.journalEntries
+      .filter((je) => {
+        if (je.status === "reversed") return false; // skip reversed
+        return je.lines.some((l) => l.accountId === accountId);
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Opening balance = all entries before startDate
+    let openingBalance = 0;
+    if (startDate) {
+      rawEntries
+        .filter((je) => je.date < startDate)
+        .forEach((je) => {
+          je.lines.filter((l) => l.accountId === accountId).forEach((l) => {
+            openingBalance += (l.debit || 0) - (l.credit || 0);
+          });
+        });
+    }
+
+    // Build running balance entries within date range
+    let running = openingBalance;
+    const entries: GeneralLedgerEntry[] = [];
+
+    rawEntries
+      .filter((je) => {
+        if (startDate && je.date < startDate) return false;
+        if (endDate && je.date > endDate) return false;
+        return true;
+      })
+      .forEach((je) => {
+        je.lines
+          .filter((l) => l.accountId === accountId)
+          .forEach((l) => {
+            running += (l.debit || 0) - (l.credit || 0);
+            entries.push({
+              jeId: je.id,
+              date: je.date,
+              description: je.description,
+              debit: l.debit || 0,
+              credit: l.credit || 0,
+              runningBalance: running,
+              sourceType: je.sourceType || "manual",
+              sourceId: je.sourceId || je.reference,
+              status: je.status,
+            });
+          });
+      });
+
+    return { account, entries, openingBalance, closingBalance: running };
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Customer & Supplier Ledgers
   // ─────────────────────────────────────────────────────────────────
 
   getCustomerLedger(customerId: string) {
     const db = DB.get();
     const customer = db.customers.find((c) => c.id === customerId);
     if (!customer) return null;
-
-    const invoices = db.invoices.filter((inv) => inv.customerId === customerId);
-    const relatedJEs = db.journalEntries.filter((je) =>
+    const invoices    = db.invoices.filter((inv) => inv.customerId === customerId);
+    const relatedJEs  = db.journalEntries.filter((je) =>
       invoices.some((inv) => inv.journalEntryId === je.id)
     );
-
-    return {
-      customer,
-      invoices,
-      journalEntries: relatedJEs,
-      balance: customer.balance || 0,
-    };
+    return { customer, invoices, journalEntries: relatedJEs, balance: customer.balance || 0 };
   },
 
   getSupplierLedger(supplierId: string) {
     const db = DB.get();
     const supplier = db.suppliers.find((s) => s.id === supplierId);
     if (!supplier) return null;
-
-    const pos = db.purchaseOrders.filter((po) => po.supplierId === supplierId);
+    const pos        = db.purchaseOrders.filter((po) => po.supplierId === supplierId);
     const relatedJEs = db.journalEntries.filter((je) =>
       pos.some((po) => po.journalEntryId === je.id)
     );
-
-    return {
-      supplier,
-      purchaseOrders: pos,
-      journalEntries: relatedJEs,
-      balance: supplier.balance || 0,
-    };
+    return { supplier, purchaseOrders: pos, journalEntries: relatedJEs, balance: supplier.balance || 0 };
   },
 
   getAccountLedger(accountId: string) {
     const db = DB.get();
     const account = db.accounts.find((a) => a.id === accountId);
     if (!account) return null;
-
     const relatedLines = db.journalEntries.flatMap((je) =>
       je.lines.filter((line) => line.accountId === accountId).map((line) => ({ je, line }))
     );
-
-    return {
-      account,
-      entries: relatedLines,
-      balance: account.balance || 0,
-    };
+    return { account, entries: relatedLines, balance: account.balance || 0 };
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // التقارير المالية
+  // Financial Reports
   // ─────────────────────────────────────────────────────────────────
 
   getIncomeStatement(startDate?: string, endDate?: string) {
     const db = DB.get();
+    const periodBalances = (startDate || endDate) ? this._computePeriodBalances(startDate, endDate) : null;
+    const bal = (a: Account) => periodBalances ? (periodBalances[a.id] || 0) : (a.balance || 0);
 
-    const periodBalances = startDate || endDate ? this._computePeriodBalances(startDate, endDate) : null;
+    const revenue      = db.accounts.filter((a) => a.type === "revenue").reduce((s, a) => s + bal(a), 0);
+    const contraRev    = db.accounts.filter((a) => a.type === "contra_revenue").reduce((s, a) => s + Math.abs(bal(a)), 0);
+    const cogs         = db.accounts.filter((a) => a.type === "cogs").reduce((s, a) => s + bal(a), 0);
+    const expenses     = db.accounts.filter((a) => a.type === "expense").reduce((s, a) => s + bal(a), 0);
 
-    const revenue = db.accounts
-      .filter((a) => a.type === "revenue")
-      .reduce((s, a) => s + (periodBalances ? (periodBalances[a.id] || 0) : (a.balance || 0)), 0);
+    const netRev   = revenue - contraRev;
+    const grossP   = netRev - cogs;
+    const netInc   = grossP - expenses;
 
-    const contraRevenue = db.accounts
-      .filter((a) => a.type === "contra_revenue")
-      .reduce((s, a) => s + Math.abs(periodBalances ? (periodBalances[a.id] || 0) : (a.balance || 0)), 0);
-
-    const cogs = db.accounts
-      .filter((a) => a.type === "cogs")
-      .reduce((s, a) => s + (periodBalances ? (periodBalances[a.id] || 0) : (a.balance || 0)), 0);
-
-    const expenses = db.accounts
-      .filter((a) => a.type === "expense")
-      .reduce((s, a) => s + (periodBalances ? (periodBalances[a.id] || 0) : (a.balance || 0)), 0);
-
-    const netRev = revenue - contraRevenue;
-    const grossP = netRev - cogs;
-    const netInc = grossP - expenses;
-
-    return {
-      revenue,
-      contraRevenue,
-      netRevenue: netRev,
-      cogs,
-      grossProfit: grossP,
-      expenses,
-      netIncome: netInc,
-      period: { startDate, endDate },
-    };
+    return { revenue, contraRevenue: contraRev, netRevenue: netRev, cogs, grossProfit: grossP, expenses, netIncome: netInc, period: { startDate, endDate } };
   },
 
   getBalanceSheet(asOfDate?: string) {
     const db = DB.get();
-
     const balances = asOfDate ? this._computePeriodBalances(undefined, asOfDate) : null;
-    const assets = db.accounts.filter((a) => a.type === "asset");
-    const liabilities = db.accounts.filter((a) => a.type === "liability");
-    const equity = db.accounts.filter((a) => a.type === "equity");
+    const bal = (a: Account) => balances ? (balances[a.id] || 0) : (a.balance || 0);
 
-    const totalAssets = assets.reduce((s, a) => s + (balances ? (balances[a.id] || 0) : (a.balance || 0)), 0);
-    const totalLiabilities = liabilities.reduce((s, a) => s + (balances ? (balances[a.id] || 0) : (a.balance || 0)), 0);
-    const totalEquity = equity.reduce((s, a) => s + (balances ? (balances[a.id] || 0) : (a.balance || 0)), 0);
+    const assets      = db.accounts.filter((a) => a.type === "asset" || a.type === "contra_asset");
+    const liabilities = db.accounts.filter((a) => a.type === "liability");
+    const equity      = db.accounts.filter((a) => a.type === "equity");
+
+    const totalAssets      = assets.reduce((s, a) => s + bal(a), 0);
+    const totalLiabilities = liabilities.reduce((s, a) => s + Math.abs(bal(a)), 0);
+    const totalEquity      = equity.reduce((s, a) => s + Math.abs(bal(a)), 0);
 
     return {
-      assets,
-      liabilities,
-      equity,
-      totalAssets,
-      totalLiabilities,
-      totalEquity,
+      assets, liabilities, equity,
+      totalAssets, totalLiabilities, totalEquity,
       isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01,
       asOfDate: asOfDate || new Date().toISOString().slice(0, 10),
     };
@@ -463,46 +718,34 @@ export const AccountingEngine = {
   getTrialBalance(asOfDate?: string) {
     const db = DB.get();
     const balances = asOfDate ? this._computePeriodBalances(undefined, asOfDate) : null;
+    const bal = (a: Account) => balances ? (balances[a.id] || 0) : (a.balance || 0);
+
+    const accounts = db.accounts
+      .filter((a) => bal(a) !== 0)
+      .map((a) => {
+        const b = bal(a);
+        return { code: a.code, name: a.name, type: a.type, debit: b > 0 ? b : 0, credit: b < 0 ? Math.abs(b) : 0 };
+      });
+
     return {
-      accounts: db.accounts
-        .filter((a) => (balances ? (balances[a.id] || 0) : (a.balance || 0)) !== 0)
-        .map((a) => ({
-          code: a.code,
-          name: a.name,
-          type: a.type,
-          debit: (balances ? (balances[a.id] || 0) : (a.balance || 0)) > 0 ? (balances ? (balances[a.id] || 0) : (a.balance || 0)) : 0,
-          credit: (balances ? (balances[a.id] || 0) : (a.balance || 0)) < 0 ? Math.abs(balances ? (balances[a.id] || 0) : (a.balance || 0)) : 0,
-        })),
-      totalDebits: db.accounts
-        .filter((a) => (balances ? (balances[a.id] || 0) : (a.balance || 0)) > 0)
-        .reduce((s, a) => s + (balances ? (balances[a.id] || 0) : (a.balance || 0)), 0),
-      totalCredits: db.accounts
-        .filter((a) => (balances ? (balances[a.id] || 0) : (a.balance || 0)) < 0)
-        .reduce((s, a) => s + Math.abs(balances ? (balances[a.id] || 0) : (a.balance || 0)), 0),
+      accounts,
+      totalDebits:  accounts.reduce((s, a) => s + a.debit,  0),
+      totalCredits: accounts.reduce((s, a) => s + a.credit, 0),
     };
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // تقيييم المخزون والأرباح
+  // Inventory & Cash
   // ─────────────────────────────────────────────────────────────────
 
   getInventoryValuation() {
     return DB.get().products.map((p) => ({
-      id: p.id,
-      sku: p.sku,
-      name: p.name,
-      qty: p.qty || 0,
-      unitCost: p.unitCost,
-      sellPrice: p.sellPrice,
-      reorderPoint: p.reorderPoint || 0,
-      unit: p.unit || "وحدة",
-      warehouseId: p.warehouseId,
-      category: p.category,
-      taxRate: p.taxRate,
+      id: p.id, sku: p.sku, name: p.name, qty: p.qty || 0,
+      unitCost: p.unitCost, sellPrice: p.sellPrice,
+      reorderPoint: p.reorderPoint || 0, unit: p.unit || "وحدة",
+      warehouseId: p.warehouseId, category: p.category, taxRate: p.taxRate,
       value: (p.qty || 0) * p.unitCost,
-      margin: p.sellPrice > 0
-        ? (((p.sellPrice - p.unitCost) / p.sellPrice) * 100).toFixed(1) + "%"
-        : "0%",
+      margin: p.sellPrice > 0 ? (((p.sellPrice - p.unitCost) / p.sellPrice) * 100).toFixed(1) + "%" : "0%",
     }));
   },
 
@@ -511,53 +754,91 @@ export const AccountingEngine = {
   },
 
   getCashPosition() {
-    const db = DB.get();
     const cashAcc = this.getAccountByCode("1010");
     const bankAcc = this.getAccountByCode("1020");
-
-    return {
-      cash: cashAcc?.balance || 0,
-      bank: bankAcc?.balance || 0,
-      total: (cashAcc?.balance || 0) + (bankAcc?.balance || 0),
-    };
+    return { cash: cashAcc?.balance || 0, bank: bankAcc?.balance || 0, total: (cashAcc?.balance || 0) + (bankAcc?.balance || 0) };
   },
 
   getReceivables() {
-    const db = DB.get();
-    return db.customers
+    return DB.get().customers
       .filter((c) => (c.balance || 0) > 0)
-      .map((c) => ({
-        ...c,
-        balance: c.balance || 0,
-      }))
-      .sort((a, b) => (b.balance || 0) - (a.balance || 0));
+      .map((c) => ({ ...c, balance: c.balance || 0 }))
+      .sort((a, b) => b.balance - a.balance);
   },
 
   getPayables() {
-    const db = DB.get();
-    return db.suppliers
+    return DB.get().suppliers
       .filter((s) => (s.balance || 0) > 0)
-      .map((s) => ({
-        ...s,
-        balance: s.balance || 0,
-      }))
-      .sort((a, b) => (b.balance || 0) - (a.balance || 0));
+      .map((s) => ({ ...s, balance: s.balance || 0 }))
+      .sort((a, b) => b.balance - a.balance);
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // تقرير ضريبة القيمة المضافة (VAT Report)
+  // Adjusting Entries (Accruals, Prepayments, Depreciation)
+  // ─────────────────────────────────────────────────────────────────
+
+  postAdjustingEntry(params: {
+    description: string;
+    reference?: string;
+    date?: string;
+    lines: JournalLine[];
+    createdBy?: string;
+    currency?: string;
+    exchangeRate?: number;
+  }): JournalEntry {
+    return this.postJE(
+      params.description,
+      params.reference || `ADJ-${Date.now()}`,
+      params.lines,
+      "adjustment",
+      params.reference || "",
+      {
+        createdBy:    params.createdBy,
+        date:         params.date,
+        currency:     params.currency,
+        exchangeRate: params.exchangeRate,
+      }
+    );
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Audit Trail Query
+  // ─────────────────────────────────────────────────────────────────
+
+  getAuditTrail(filter?: {
+    sourceType?: JESourceType;
+    createdBy?: string;
+    fromDate?: string;
+    toDate?: string;
+    status?: JournalEntry["status"];
+  }) {
+    const db = DB.get();
+    return db.journalEntries.filter((je) => {
+      if (filter?.sourceType && je.sourceType !== filter.sourceType) return false;
+      if (filter?.createdBy  && je.createdBy  !== filter.createdBy)  return false;
+      if (filter?.status     && je.status     !== filter.status)      return false;
+      if (filter?.fromDate   && je.date < filter.fromDate)            return false;
+      if (filter?.toDate     && je.date > filter.toDate)              return false;
+      return true;
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // VAT Report
   // ─────────────────────────────────────────────────────────────────
 
   getVATReport(startDate?: string, endDate?: string) {
     const db = DB.get();
 
     const filteredInvoices = db.invoices.filter((inv) => {
+      if (inv.isReturned) return false;
       if (startDate && inv.date < startDate) return false;
       if (endDate   && inv.date > endDate)   return false;
       return true;
     });
 
     const filteredPOs = db.purchaseOrders.filter((po) => {
+      if (po.isReturned) return false;
       if (startDate && po.date < startDate) return false;
       if (endDate   && po.date > endDate)   return false;
       return true;
@@ -570,17 +851,11 @@ export const AccountingEngine = {
     const taxableInvoices = filteredInvoices.filter((i) => (i.taxAmount || 0) > 0);
     const taxablePOs      = filteredPOs.filter((p) => (p.taxAmount || 0) > 0);
 
-    const totalSalesSubtotal  = taxableInvoices.reduce((s, i) => s + i.subtotal, 0);
-    const totalPurchSubtotal  = taxablePOs.reduce((s, p) => s + p.subtotal, 0);
-
     return {
-      outputVAT,
-      inputVAT,
-      netVAT,
-      totalSalesSubtotal,
-      totalPurchSubtotal,
-      taxableInvoices,
-      taxablePOs,
+      outputVAT, inputVAT, netVAT,
+      totalSalesSubtotal: taxableInvoices.reduce((s, i) => s + i.subtotal, 0),
+      totalPurchSubtotal: taxablePOs.reduce((s, p) => s + p.subtotal, 0),
+      taxableInvoices, taxablePOs,
       period: { startDate, endDate },
     };
   },

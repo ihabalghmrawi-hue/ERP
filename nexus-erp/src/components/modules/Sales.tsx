@@ -51,6 +51,10 @@ export function Sales({ addToast }: Props) {
   const [invoices, setInvoices]     = useState<Invoice[]>([...db.invoices]);
   const [showModal, setShowModal]   = useState(false);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [payInvoice, setPayInvoice]       = useState<Invoice | null>(null);
+  const [jeInvoice, setJeInvoice]         = useState<Invoice | null>(null);
+  const [returnInvoice, setReturnInvoice] = useState<Invoice | null>(null);
+  const [payAmount, setPayAmount]         = useState("");
   const [search, setSearch]       = useState("");
 
   const [vatEnabled,   setVatEnabled]   = useState(settings.vatEnabled   || false);
@@ -165,6 +169,41 @@ export function Sales({ addToast }: Props) {
     } catch (e: any) { addToast(e.message, "error"); }
   };
 
+  const handleRegisterPayment = (inv: Invoice) => {
+    const amount = parseFloat(payAmount);
+    if (!amount || amount <= 0 || amount > (inv.amountDue || 0)) {
+      addToast("أدخل مبلغاً صحيحاً لا يتجاوز المبلغ المستحق", "error"); return;
+    }
+    try {
+      const je = AccountingEngine.postCashReceipt(inv.customerId, amount, `تسديد جزئي للفاتورة ${inv.id}`, inv.id);
+      inv.amountPaid = (inv.amountPaid || 0) + amount;
+      inv.amountDue  = Math.max(0, (inv.amountDue || 0) - amount);
+      if (inv.amountDue === 0) inv.status = "paid";
+      DB.save();
+      setInvoices([...db.invoices]);
+      logActivity(user?.id || "", user?.name || "", "UPDATE", "Sales", `سدد ${fmt(amount)} على الفاتورة ${inv.id} (قيد: ${je.id})`);
+      addToast(`تم تسجيل الدفع ${fmt(amount)} — قيد: ${je.id}`, "success");
+      setPayInvoice(null);
+      setPayAmount("");
+    } catch (e: any) { addToast(e.message, "error"); }
+  };
+
+  const handleReturn = (inv: Invoice) => {
+    try {
+      const je = AccountingEngine.postSalesReturn(inv);
+      inv.isReturned  = true;
+      inv.returnJEId  = je.id;
+      inv.returnDate  = new Date().toISOString().slice(0, 10);
+      inv.status      = "returned" as any;
+      inv.amountDue   = 0;
+      DB.save();
+      setInvoices([...db.invoices]);
+      logActivity(user?.id || "", user?.name || "", "RETURN", "Sales", `مرتجع الفاتورة ${inv.id} — قيد عكسي: ${je.id}`);
+      addToast(`تم ترحيل مرتجع الفاتورة ${inv.id} — قيد: ${je.id}`, "success");
+      setReturnInvoice(null);
+    } catch (e: any) { addToast(e.message, "error"); }
+  };
+
   const handleReject = (inv: Invoice) => {
     if (!canApprove) return;
     const reason = window.prompt("سبب الرفض (اختياري):");
@@ -238,11 +277,22 @@ export function Sales({ addToast }: Props) {
             { label: "" },
             ...(canApprove ? [{ label: "إجراء" }] : []),
             { label: "الموافقة" }, { label: t("jeRef") }, { label: t("status") }, { label: t("total") },
-            { label: "ضريبة" }, { label: t("type") }, { label: t("customer") },
+            { label: "مستحق" }, { label: "ضريبة" }, { label: t("type") }, { label: t("customer") },
             { label: t("date") }, { label: t("invoiceNo") },
           ]}
           rows={filtered.map((inv) => [
-            <button key="print" onClick={() => setPrintInvoice(inv)} style={{ ...S.btn("outline"), padding: "3px 10px", fontSize: 11 }}>🖨 طباعة</button>,
+            <span key="acts" style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <button onClick={() => setPrintInvoice(inv)} style={{ ...S.btn("outline"), padding: "3px 8px", fontSize: 11 }}>🖨</button>
+              {(inv.journalEntryId || inv.returnJEId) && (
+                <button onClick={() => setJeInvoice(inv)} style={{ ...S.btn("outline"), padding: "3px 8px", fontSize: 11 }}>📒</button>
+              )}
+              {inv.approvalStatus === "approved" && inv.status !== "paid" && !inv.isReturned && (
+                <button onClick={() => { setPayInvoice(inv); setPayAmount(String(inv.amountDue || "")); }} style={{ ...S.btn("sm"), background: C.success, color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>💰 دفع</button>
+              )}
+              {(inv.approvalStatus === "approved" || !inv.approvalStatus) && !inv.isReturned && (
+                <button onClick={() => setReturnInvoice(inv)} style={{ ...S.btn("sm"), background: C.danger, color: "#fff", border: "none", fontSize: 11, padding: "3px 8px" }}>↩ مرتجع</button>
+              )}
+            </span>,
             ...(canApprove ? [
               inv.approvalStatus === "pending" ? (
                 <span key="act" style={{ display: "flex", gap: 4 }}>
@@ -262,6 +312,9 @@ export function Sales({ addToast }: Props) {
             <span key="je" style={{ color: C.purple, fontSize: 12 }}>{inv.journalEntryId || "—"}</span>,
             <StatusBadge key="st" status={inv.status} />,
             <span key="tot" style={{ fontWeight: 800, color: C.text }}>{fmt(inv.total)}</span>,
+            <span key="due" style={{ fontWeight: 700, color: (inv.amountDue || 0) > 0 ? C.danger : C.success }}>
+              {(inv.amountDue || 0) > 0 ? fmt(inv.amountDue) : "✓"}
+            </span>,
             <span key="tax" style={{ fontSize: 12, color: (inv.taxAmount || 0) > 0 ? C.warning : C.textMuted }}>
               {(inv.taxAmount || 0) > 0 ? fmt(inv.taxAmount) : "معفى"}
             </span>,
@@ -432,6 +485,130 @@ export function Sales({ addToast }: Props) {
       {printInvoice && (
         <InvoicePrintModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />
       )}
+
+      {/* Payment Registration Modal */}
+      {payInvoice && (
+        <Modal title={`تسجيل دفع — ${payInvoice.id}`} onClose={() => { setPayInvoice(null); setPayAmount(""); }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textSec, marginBottom: 8 }}>
+              <span>إجمالي الفاتورة</span><span style={{ fontWeight: 700 }}>{fmt(payInvoice.total)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.success, marginBottom: 8 }}>
+              <span>المدفوع سابقاً</span><span style={{ fontWeight: 700 }}>{fmt(payInvoice.amountPaid || 0)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 800, color: C.danger, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+              <span>المبلغ المستحق</span><span>{fmt(payInvoice.amountDue || 0)}</span>
+            </div>
+          </div>
+          <div style={S.formGroup}>
+            <label style={S.label}>المبلغ المُسدَّد *</label>
+            <input
+              style={S.input} type="number" min="0.01" step="0.01"
+              max={payInvoice.amountDue || 0}
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              placeholder="أدخل المبلغ"
+            />
+          </div>
+          <div style={{ background: C.accentLight, borderRadius: 7, padding: 10, marginBottom: 16, fontSize: 12, color: C.accentMid }}>
+            سيتم تسجيل قيد: مدين الصندوق / دائن العملاء
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+            <button style={{ ...S.btn("outline") }} onClick={() => { setPayInvoice(null); setPayAmount(""); }}>إلغاء</button>
+            <button style={{ ...S.btn("primary"), border: "none" }} onClick={() => handleRegisterPayment(payInvoice)}>✓ تسجيل الدفع</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Return Confirmation Modal */}
+      {returnInvoice && (
+        <Modal title={`مرتجع مبيعات — ${returnInvoice.id}`} onClose={() => setReturnInvoice(null)}>
+          <div style={{ background: "#FFF3CD", border: `1px solid ${C.warning}`, borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#856404" }}>
+            ⚠️ سيتم إنشاء <strong>قيد عكسي</strong> يلغي الإيراد ويُعيد المخزون. هذا الإجراء لا يمكن التراجع عنه.
+          </div>
+          <div style={{ fontSize: 14, marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: C.textSec }}>الفاتورة</span><strong>{returnInvoice.id}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: C.textSec }}>العميل</span><strong>{returnInvoice.customerName}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: C.textSec }}>الإجمالي</span><strong style={{ color: C.danger }}>{fmt(returnInvoice.total)}</strong>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+            <button style={{ ...S.btn("outline") }} onClick={() => setReturnInvoice(null)}>إلغاء</button>
+            <button style={{ ...S.btn("danger"), border: "none" }} onClick={() => handleReturn(returnInvoice)}>↩ تأكيد المرتجع وترحيل القيد</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Journal Entry Viewer */}
+      {jeInvoice && (() => {
+        const allJEs = DB.get().journalEntries;
+        const jeIds = [jeInvoice.journalEntryId, jeInvoice.returnJEId].filter(Boolean) as string[];
+        const jes = jeIds.map(id => allJEs.find(j => j.id === id)).filter(Boolean) as typeof allJEs;
+        const srcLabel: Record<string, string> = {
+          invoice: "فاتورة مبيعات", payment: "سند قبض", refund: "مرتجع",
+          purchase: "فاتورة شراء", purchase_payment: "سند دفع", reversal: "قيد عكسي", manual: "يدوي",
+        };
+        return (
+          <Modal title={`القيود المحاسبية — ${jeInvoice.id}`} onClose={() => setJeInvoice(null)} wide>
+            {jes.length === 0 && (
+              <div style={{ color: C.textMuted, padding: 20, textAlign: "center" }}>لا توجد قيود مرتبطة</div>
+            )}
+            {jes.map((je) => (
+              <div key={je.id} style={{ marginBottom: 24 }}>
+                {/* JE Header */}
+                <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontWeight: 800, color: C.purple, fontSize: 14 }}>{je.id}</span>
+                  <span style={{ fontSize: 12, color: C.textSec }}>{je.date}</span>
+                  <span style={{ ...S.badge(je.status === "reversed" ? "danger" : "success"), fontSize: 11 }}>
+                    {je.status === "reversed" ? "✗ معكوس" : "✓ مرحّل"}
+                  </span>
+                  <span style={{ ...S.badge("info"), fontSize: 11 }}>{srcLabel[je.sourceType] || je.sourceType}</span>
+                  {je.reversalOf && <span style={{ fontSize: 11, color: C.warning }}>يعكس: {je.reversalOf}</span>}
+                  {je.reversedBy && <span style={{ fontSize: 11, color: C.danger }}>معكوس بـ: {je.reversedBy}</span>}
+                  <span style={{ fontSize: 12, color: C.textMuted, flex: 1 }}>{je.description}</span>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: C.accent, color: "#fff" }}>
+                      {["الحساب", "مدين", "دائن"].map(h => (
+                        <th key={h} style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {je.lines.map((line, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? C.surfaceAlt : C.surface, borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: "8px 12px" }}>{line.accountName}</td>
+                        <td style={{ padding: "8px 12px", color: line.debit > 0 ? C.success : C.textMuted, fontWeight: line.debit > 0 ? 700 : 400, direction: "ltr" }}>
+                          {line.debit > 0 ? fmt(line.debit) : "—"}
+                        </td>
+                        <td style={{ padding: "8px 12px", color: line.credit > 0 ? C.danger : C.textMuted, fontWeight: line.credit > 0 ? 700 : 400, direction: "ltr" }}>
+                          {line.credit > 0 ? fmt(line.credit) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: C.surfaceAlt, fontWeight: 800, borderTop: `2px solid ${C.border}` }}>
+                      <td style={{ padding: "8px 12px" }}>الإجمالي</td>
+                      <td style={{ padding: "8px 12px", color: C.success, direction: "ltr" }}>{fmt(je.lines.reduce((s, l) => s + (l.debit || 0), 0))}</td>
+                      <td style={{ padding: "8px 12px", color: C.danger, direction: "ltr" }}>{fmt(je.lines.reduce((s, l) => s + (l.credit || 0), 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 4 }}>
+              <button style={{ ...S.btn("outline") }} onClick={() => setJeInvoice(null)}>إغلاق</button>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
