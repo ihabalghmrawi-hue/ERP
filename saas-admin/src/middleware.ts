@@ -7,7 +7,10 @@ export function middleware(req: NextRequest) {
   // protect /dashboard and /api/* (except /api/auth/login)
   const isProtected =
     pathname.startsWith("/dashboard") ||
-    (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth/login"));
+    (pathname.startsWith("/api/") &&
+      !pathname.startsWith("/api/auth/login") &&
+      !pathname.startsWith("/api/setup") &&
+      !pathname.startsWith("/api/wipe"));
 
   if (!isProtected) return NextResponse.next();
 
