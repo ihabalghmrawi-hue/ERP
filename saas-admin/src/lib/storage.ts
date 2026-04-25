@@ -80,9 +80,9 @@ export async function saveSaaS(db: SaaSDatabase): Promise<void> {
     [json]
   );
 
-  // Upstash Redis
+  // Upstash Redis — store as object (not string) to match nexus-erp format
   const r = getRedis();
-  if (r) await r.set(SAAS_KEY, json).catch(() => {});
+  if (r) await r.set(SAAS_KEY, db).catch(() => {});
 }
 
 // ── Bootstrap: create first super admin from env ───────────────
@@ -127,8 +127,9 @@ export async function saveTenantData(companyId: string, data: any): Promise<void
      ON CONFLICT (company_id) DO UPDATE SET data = $2::jsonb, updated_at = now()`,
     [companyId, json]
   );
+  // Store as object (not string) to match nexus-erp format
   const r = getRedis();
-  if (r) await r.set(`tenant:${companyId}`, json).catch(() => {});
+  if (r) await r.set(`tenant:${companyId}`, data).catch(() => {});
 }
 
 // ── Helpers ────────────────────────────────────────────────────
