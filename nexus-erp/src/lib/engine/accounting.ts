@@ -1,4 +1,4 @@
-import { DB, JournalLine, JournalEntry, JESourceType, Invoice, PurchaseOrder, Account, FinancialPeriod } from "../db/database";
+import { DB, JournalLine, JournalEntry, JESourceType, Invoice, PurchaseOrder, Account, FinancialPeriod, TreasuryTransaction, POSSession } from "../db/database";
 import { InventoryManager } from "./inventory";
 import { isPeriodLocked } from "./permissions";
 
@@ -821,6 +821,218 @@ export const AccountingEngine = {
       if (filter?.toDate     && je.date > filter.toDate)              return false;
       return true;
     });
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Treasury: Record Cash Movement with mandatory JE
+  // ─────────────────────────────────────────────────────────────────
+
+  recordTreasuryMovement(params: {
+    type: "in" | "out" | "transfer";
+    accountId: string;
+    toAccountId?: string;
+    amount: number;
+    description: string;
+    referenceType?: TreasuryTransaction["referenceType"];
+    referenceId?: string;
+    sessionId?: string;
+    userId?: string;
+    userName?: string;
+    date?: string;
+  }): { tx: TreasuryTransaction; je: JournalEntry } {
+    const db = DB.get();
+    const account   = db.accounts.find((a) => a.id === params.accountId);
+    const toAccount = params.toAccountId ? db.accounts.find((a) => a.id === params.toAccountId) : null;
+
+    if (!account) throw new Error(`الحساب ${params.accountId} غير موجود`);
+    if (params.type === "transfer" && !toAccount) throw new Error("يجب تحديد حساب الوجهة للتحويل");
+    if (params.amount <= 0) throw new Error("المبلغ يجب أن يكون أكبر من صفر");
+
+    // Build JE lines
+    let jeLines: JournalLine[];
+    if (params.type === "in") {
+      // DR Cash account / CR offset (use equity/owner account 3000 for manual deposits)
+      const offsetAcc = db.accounts.find((a) => a.code === "3000") || db.accounts[0];
+      jeLines = [
+        { accountId: account.id,   accountName: account.name,   debit: params.amount, credit: 0 },
+        { accountId: offsetAcc.id, accountName: offsetAcc.name, debit: 0, credit: params.amount },
+      ];
+    } else if (params.type === "out") {
+      const offsetAcc = db.accounts.find((a) => a.code === "6000") || db.accounts[0];
+      jeLines = [
+        { accountId: offsetAcc.id, accountName: offsetAcc.name, debit: params.amount, credit: 0 },
+        { accountId: account.id,   accountName: account.name,   debit: 0, credit: params.amount },
+      ];
+    } else {
+      // transfer: DR toAccount / CR fromAccount
+      jeLines = [
+        { accountId: toAccount!.id, accountName: toAccount!.name, debit: params.amount, credit: 0 },
+        { accountId: account.id,    accountName: account.name,    debit: 0, credit: params.amount },
+      ];
+    }
+
+    const je = this.postJE(
+      params.description,
+      `TX-${Date.now()}`,
+      jeLines,
+      "manual",
+      params.referenceId || "",
+      { createdBy: params.userId || "system", date: params.date }
+    );
+
+    const txId = `TX-${String(DB.nextId("tx")).padStart(4, "0")}`;
+    const balanceAfter = account.balance; // already updated by postJE
+
+    const tx: TreasuryTransaction = {
+      id: txId,
+      date: params.date || new Date().toISOString().slice(0, 10),
+      type: params.type,
+      accountId: account.id,
+      accountName: account.name,
+      toAccountId:   params.toAccountId,
+      toAccountName: toAccount?.name,
+      amount: params.amount,
+      balanceAfter,
+      description: params.description,
+      referenceType: params.referenceType || "manual",
+      referenceId:   params.referenceId,
+      journalEntryId: je.id,
+      sessionId: params.sessionId,
+      userId:    params.userId,
+      userName:  params.userName,
+      reconciled: false,
+    };
+
+    db.treasury.push(tx);
+    DB.save();
+    return { tx, je };
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // POS Session Management
+  // ─────────────────────────────────────────────────────────────────
+
+  openPOSSession(params: {
+    userId: string;
+    userName: string;
+    cashAccountId: string;
+    openingBalance: number;
+  }): POSSession {
+    const db = DB.get();
+    if (!db.posSessions) db.posSessions = [];
+
+    // Check no open session for this user
+    const existing = db.posSessions.find((s) => s.status === "open" && s.userId === params.userId);
+    if (existing) {
+      throw new Error(`لديك وردية مفتوحة بالفعل (${existing.id}) — أغلقها أولاً`);
+    }
+
+    const cashAccount = db.accounts.find((a) => a.id === params.cashAccountId);
+    if (!cashAccount) throw new Error("حساب الصندوق غير موجود");
+
+    const session: POSSession = {
+      id: `PS-${String(DB.nextId("ps")).padStart(4, "0")}`,
+      userId: params.userId,
+      userName: params.userName,
+      cashAccountId: params.cashAccountId,
+      cashAccountName: cashAccount.name,
+      openingBalance: params.openingBalance,
+      expectedCash: params.openingBalance,
+      totalSales: 0,
+      totalCash: 0,
+      totalCard: 0,
+      invoiceCount: 0,
+      status: "open",
+      openedAt: new Date().toISOString(),
+    };
+
+    db.posSessions.push(session);
+    DB.save();
+    return session;
+  },
+
+  updatePOSSessionTotals(sessionId: string, invoiceTotal: number, paymentMethod: "cash" | "card"): void {
+    const db = DB.get();
+    const session = db.posSessions?.find((s) => s.id === sessionId);
+    if (!session || session.status !== "open") return;
+
+    session.totalSales += invoiceTotal;
+    session.invoiceCount += 1;
+    if (paymentMethod === "cash") {
+      session.totalCash += invoiceTotal;
+    } else {
+      session.totalCard += invoiceTotal;
+    }
+    session.expectedCash = session.openingBalance + session.totalCash;
+    DB.save();
+  },
+
+  closePOSSession(params: {
+    sessionId: string;
+    actualCash: number;
+    userId: string;
+    userName: string;
+    notes?: string;
+  }): { session: POSSession; reconciliationJE?: JournalEntry } {
+    const db = DB.get();
+    const session = db.posSessions?.find((s) => s.id === params.sessionId);
+    if (!session) throw new Error(`الوردية ${params.sessionId} غير موجودة`);
+    if (session.status === "closed") throw new Error(`الوردية ${params.sessionId} مغلقة مسبقاً`);
+
+    const now = new Date().toISOString();
+    session.actualCash = params.actualCash;
+    session.difference = params.actualCash - session.expectedCash;
+    session.status = "closed";
+    session.closedAt = now;
+    session.notes = params.notes;
+
+    const diff = session.difference;
+    let reconciliationJE: JournalEntry | undefined;
+
+    // Post reconciliation JE only if there is a difference
+    if (Math.abs(diff) > 0.005) {
+      const cashAcc     = db.accounts.find((a) => a.id === session.cashAccountId);
+      const shortageAcc = db.accounts.find((a) => a.code === "6020"); // عجز الصندوق
+      const overageAcc  = db.accounts.find((a) => a.code === "4020"); // زيادة الصندوق
+
+      if (cashAcc && (shortageAcc || overageAcc)) {
+        let jeLines: JournalLine[];
+        if (diff < 0) {
+          // Shortage: actual < expected → DR Cash Shortage / CR Cash
+          if (!shortageAcc) throw new Error("حساب عجز الصندوق (6020) غير موجود");
+          jeLines = [
+            { accountId: shortageAcc.id, accountName: shortageAcc.name, debit: Math.abs(diff), credit: 0 },
+            { accountId: cashAcc.id,     accountName: cashAcc.name,     debit: 0, credit: Math.abs(diff) },
+          ];
+        } else {
+          // Overage: actual > expected → DR Cash / CR Cash Over Income
+          if (!overageAcc) throw new Error("حساب زيادة الصندوق (4020) غير موجود");
+          jeLines = [
+            { accountId: cashAcc.id,    accountName: cashAcc.name,    debit: Math.abs(diff), credit: 0 },
+            { accountId: overageAcc.id, accountName: overageAcc.name, debit: 0, credit: Math.abs(diff) },
+          ];
+        }
+
+        reconciliationJE = this.postJE(
+          `تسوية وردية POS ${params.sessionId} — ${diff < 0 ? "عجز" : "زيادة"}: ${Math.abs(diff).toFixed(2)}`,
+          `REC-${params.sessionId}`,
+          jeLines,
+          "adjustment",
+          params.sessionId,
+          { createdBy: params.userId }
+        );
+
+        session.reconciliationJEId = reconciliationJE.id;
+      }
+    }
+
+    DB.save();
+    return { session, reconciliationJE };
+  },
+
+  getActivePOSSession(userId: string): POSSession | null {
+    const db = DB.get();
+    return db.posSessions?.find((s) => s.status === "open" && s.userId === userId) || null;
   },
 
   // ─────────────────────────────────────────────────────────────────

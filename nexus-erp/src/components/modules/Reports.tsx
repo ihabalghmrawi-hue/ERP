@@ -761,8 +761,8 @@ export function Reports() {
 
         // Financing / other: treasury transactions in period
         const txInPeriod    = db.treasury.filter(tx => tx.date >= from && tx.date <= to);
-        const receiptsOther = txInPeriod.filter(tx => tx.type === "receipt").reduce((s, tx) => s + tx.amount, 0);
-        const paymentsOther = txInPeriod.filter(tx => tx.type === "payment").reduce((s, tx) => s + tx.amount, 0);
+        const receiptsOther = txInPeriod.filter(tx => tx.type === "in").reduce((s, tx) => s + tx.amount, 0);
+        const paymentsOther = txInPeriod.filter(tx => tx.type === "out").reduce((s, tx) => s + tx.amount, 0);
         const netFinancing  = receiptsOther - paymentsOther;
 
         const netCashFlow   = netOperating + netFinancing;
@@ -834,9 +834,9 @@ export function Reports() {
                 <DataTable
                   headers={[{ label: "المبلغ" }, { label: "النوع" }, { label: "الوصف" }, { label: "التاريخ" }]}
                   rows={txInPeriod.slice().sort((a, b) => b.date.localeCompare(a.date)).map(tx => [
-                    <span key="amt" style={{ fontWeight: 700, color: tx.type === "receipt" ? C.success : C.danger }}>{fmt(tx.amount)}</span>,
-                    <span key="type" style={S.badge(tx.type === "receipt" ? "success" : tx.type === "payment" ? "danger" : "info")}>
-                      {tx.type === "receipt" ? "إيصال" : tx.type === "payment" ? "دفع" : "تحويل"}
+                    <span key="amt" style={{ fontWeight: 700, color: tx.type === "in" ? C.success : C.danger }}>{fmt(tx.amount)}</span>,
+                    <span key="type" style={S.badge(tx.type === "in" ? "success" : tx.type === "out" ? "danger" : "info")}>
+                      {tx.type === "in" ? "إيصال" : tx.type === "out" ? "دفع" : "تحويل"}
                     </span>,
                     <span key="desc" style={{ fontSize: 12, color: C.textSec }}>{tx.description}</span>,
                     fmtDate(tx.date),

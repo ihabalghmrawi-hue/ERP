@@ -190,13 +190,42 @@ export interface PurchaseOrder {
 export interface TreasuryTransaction {
   id: string;
   date: string;
-  type: "receipt" | "payment" | "transfer";
-  accountId?: string;
-  accountName?: string;
+  type: "in" | "out" | "transfer";
+  accountId: string;
+  accountName: string;
+  toAccountId?: string;
+  toAccountName?: string;
   amount: number;
-  ref?: string;
+  balanceAfter?: number;
   description: string;
+  referenceType?: "invoice" | "po" | "manual" | "pos_session" | "adjustment";
+  referenceId?: string;
+  journalEntryId?: string;
+  sessionId?: string;
+  userId?: string;
+  userName?: string;
   reconciled: boolean;
+}
+
+export interface POSSession {
+  id: string;
+  userId: string;
+  userName: string;
+  cashAccountId: string;
+  cashAccountName: string;
+  openingBalance: number;
+  expectedCash: number;
+  actualCash?: number;
+  difference?: number;
+  totalSales: number;
+  totalCash: number;
+  totalCard: number;
+  invoiceCount: number;
+  status: "open" | "closed";
+  openedAt: string;
+  closedAt?: string;
+  reconciliationJEId?: string;
+  notes?: string;
 }
 
 export interface Warehouse {
@@ -332,8 +361,9 @@ export interface DatabaseState {
   emailLog: EmailLog[];
   bankStatements: BankStatement[];
   financialPeriods: FinancialPeriod[];
+  posSessions: POSSession[];
   settings: AppSettings;
-  counters: { je: number; inv: number; po: number; tx: number; bs: number; fp: number };
+  counters: { je: number; inv: number; po: number; tx: number; bs: number; fp: number; ps: number };
 }
 
 // ─── Default Chart of Accounts ─────────────────────────────────
@@ -359,6 +389,8 @@ export function createDefaultAccounts(): Account[] {
 
     { id: "acc_6000", code: "6000", name: "المصروفات التشغيلية", type: "expense", category: "expense", balance: 0 },
     { id: "acc_6010", code: "6010", name: "مصاريف الشحن والتسليم", type: "expense", category: "expense", balance: 0 },
+    { id: "acc_6020", code: "6020", name: "عجز الصندوق", type: "expense", category: "expense", balance: 0 },
+    { id: "acc_4020", code: "4020", name: "زيادة الصندوق", type: "revenue", category: "revenue", balance: 0 },
   ];
 }
 
@@ -380,6 +412,7 @@ export function createInitialDatabaseState(): DatabaseState {
     emailLog: [],
     bankStatements: [],
     financialPeriods: [],
+    posSessions: [],
     settings: {
       companyName: "",
       taxNumber: "",
@@ -395,7 +428,7 @@ export function createInitialDatabaseState(): DatabaseState {
       lockedPeriods: [],
       requireInvoiceApproval: false,
     },
-    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1 },
+    counters: { je: 1, inv: 1, po: 1, tx: 1, bs: 1, fp: 1, ps: 1 },
   };
 }
 

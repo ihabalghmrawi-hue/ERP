@@ -440,7 +440,7 @@ function StatementDetail({
     setLines(prev => prev.map(l => {
       if (l.status !== "unmatched") return l;
       const match = treasuryInRange.find(t => {
-        const txAmt = t.type === "receipt" ? t.amount : -t.amount;
+        const txAmt = t.type === "in" ? t.amount : -t.amount;
         return Math.abs(txAmt - l.amount) < 0.01 && !prev.some(x => x.matchedTransactionId === t.id);
       });
       if (match) { count++; return { ...l, status: "matched", matchedTransactionId: match.id }; }
@@ -626,7 +626,7 @@ function MatchSelector({
 
   // Suggest transactions with matching amount
   const suggestions = treasury.filter(t => {
-    const txAmt = t.type === "receipt" ? t.amount : -t.amount;
+    const txAmt = t.type === "in" ? t.amount : -t.amount;
     return Math.abs(txAmt - line.amount) < 0.01;
   });
 
@@ -669,8 +669,8 @@ function MatchSelector({
 }
 
 function TxOption({ tx, onSelect }: { tx: TreasuryTransaction; onSelect: () => void }) {
-  const sign = tx.type === "receipt" ? "+" : "-";
-  const color = tx.type === "receipt" ? C.success : C.danger;
+  const sign = tx.type === "in" ? "+" : "-";
+  const color = tx.type === "in" ? C.success : C.danger;
   return (
     <div
       onClick={onSelect}
