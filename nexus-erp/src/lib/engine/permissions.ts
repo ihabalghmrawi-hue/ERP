@@ -164,6 +164,8 @@ export function hasPermission(
     const role = user.role as UserRole;
     return (ROLE_PERMISSIONS[role] ?? []).includes(perm);
   }
+  // "all" grants every permission (used by saas-admin when creating company admins)
+  if (user.permissions.includes("all")) return true;
   return user.permissions.includes(perm);
 }
 
