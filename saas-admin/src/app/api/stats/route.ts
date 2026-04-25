@@ -3,7 +3,7 @@ import { getAdminFromRequest } from "@/lib/auth";
 import { loadSaaS } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
-  if (!getAdminFromRequest(req))
+  if (!await getAdminFromRequest(req))
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
   const db = await loadSaaS();

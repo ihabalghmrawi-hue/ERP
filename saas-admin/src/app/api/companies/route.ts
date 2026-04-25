@@ -5,15 +5,15 @@ import { hashPassword } from "@/lib/password";
 import { v4 as uuidv4 } from "uuid";
 import { Company, PlanId } from "@/lib/types";
 
-function guard(req: NextRequest) {
-  if (!getAdminFromRequest(req))
+async function guard(req: NextRequest) {
+  if (!await getAdminFromRequest(req))
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
   return null;
 }
 
 // GET /api/companies  — list all companies with optional search/filter
 export async function GET(req: NextRequest) {
-  const err = guard(req); if (err) return err;
+  const err = await guard(req); if (err) return err;
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.toLowerCase() ?? "";
   const status = searchParams.get("status") ?? "all";
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/companies  — create company + first admin user
 export async function POST(req: NextRequest) {
-  const err = guard(req); if (err) return err;
+  const err = await guard(req); if (err) return err;
   const body = await req.json().catch(() => ({}));
   const { name, email, phone, country, planId, trialDays, adminName, adminEmail, adminPassword } = body;
 

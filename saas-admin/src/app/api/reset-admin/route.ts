@@ -8,7 +8,7 @@ import { verifyPassword } from "@/lib/password";
 // Replaces the super admin with a new account.
 // Requires SETUP_SECRET (same value set in the main ERP project).
 export async function POST(req: NextRequest) {
-  if (!getAdminFromRequest(req))
+  if (!await getAdminFromRequest(req))
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

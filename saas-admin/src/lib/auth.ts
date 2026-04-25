@@ -1,7 +1,6 @@
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const SECRET = process.env.ADMIN_JWT_SECRET || "fallback-dev-secret-change-in-prod";
 const COOKIE = "saas_admin_token";
 
 export interface AdminToken {
@@ -12,25 +11,33 @@ export interface AdminToken {
   exp?: number;
 }
 
-export function signAdminToken(payload: Omit<AdminToken, "iat" | "exp">): string {
-  return jwt.sign(payload, SECRET, { expiresIn: "8h" });
+function getSecret(): Uint8Array {
+  const secret = process.env.ADMIN_JWT_SECRET || "fallback-dev-secret-change-in-prod";
+  return new TextEncoder().encode(secret);
 }
 
-export function verifyAdminToken(token: string): AdminToken {
-  return jwt.verify(token, SECRET) as AdminToken;
+export async function signAdminToken(payload: Omit<AdminToken, "iat" | "exp">): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("8h")
+    .sign(getSecret());
 }
 
-// Next.js 15: cookies() is async — use only in Server Components/Actions
+export async function verifyAdminToken(token: string): Promise<AdminToken> {
+  const { payload } = await jwtVerify(token, getSecret());
+  return payload as unknown as AdminToken;
+}
+
 export async function getAdminFromCookie(): Promise<AdminToken | null> {
   try {
     const jar = await cookies();
     const token = jar.get(COOKIE)?.value;
     if (!token) return null;
-    return verifyAdminToken(token);
+    return await verifyAdminToken(token);
   } catch { return null; }
 }
 
-// For API routes and middleware: read cookie from request header directly
 export function getTokenFromRequest(req: Request): string | null {
   const cookieHeader = (req as any).headers?.get?.("cookie") ?? null;
   if (!cookieHeader) return null;
@@ -38,10 +45,10 @@ export function getTokenFromRequest(req: Request): string | null {
   return match?.[1] ?? null;
 }
 
-export function getAdminFromRequest(req: Request): AdminToken | null {
+export async function getAdminFromRequest(req: Request): Promise<AdminToken | null> {
   const token = getTokenFromRequest(req);
   if (!token) return null;
-  try { return verifyAdminToken(token); } catch { return null; }
+  try { return await verifyAdminToken(token); } catch { return null; }
 }
 
 export const COOKIE_NAME = COOKIE;

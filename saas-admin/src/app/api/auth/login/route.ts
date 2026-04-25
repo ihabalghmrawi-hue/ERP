@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     await saveSaaS(db);
   }
 
-  const token = signAdminToken({ sub: admin.id, email: admin.email, name: admin.name });
+  const token = await signAdminToken({ sub: admin.id, email: admin.email, name: admin.name });
   const res = NextResponse.json({ ok: true, name: admin.name, email: admin.email });
   res.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,

@@ -5,7 +5,7 @@ import { getAdminFromRequest } from "@/lib/auth";
 // Wipes all saas:data and tenant:* keys from Upstash.
 // Requires login + SETUP_SECRET confirmation.
 export async function POST(req: NextRequest) {
-  if (!getAdminFromRequest(req))
+  if (!await getAdminFromRequest(req))
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

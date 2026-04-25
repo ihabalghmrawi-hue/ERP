@@ -3,8 +3,8 @@ import { getAdminFromRequest } from "@/lib/auth";
 import { loadSaaS, saveSaaS, loadTenantData, addDays } from "@/lib/storage";
 import { PlanId } from "@/lib/types";
 
-function guard(req: NextRequest) {
-  if (!getAdminFromRequest(req))
+async function guard(req: NextRequest) {
+  if (!await getAdminFromRequest(req))
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
   return null;
 }
@@ -13,7 +13,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 // GET /api/companies/[id]
 export async function GET(req: NextRequest, ctx: RouteContext) {
-  const err = guard(req); if (err) return err;
+  const err = await guard(req); if (err) return err;
   const { id } = await ctx.params;
   const db = await loadSaaS();
   const company = db.companies.find(c => c.id === id);
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
 // PATCH /api/companies/[id]
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
-  const err = guard(req); if (err) return err;
+  const err = await guard(req); if (err) return err;
   const { id } = await ctx.params;
   const db = await loadSaaS();
   const company = db.companies.find(c => c.id === id);
@@ -99,7 +99,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
 // DELETE /api/companies/[id]
 export async function DELETE(req: NextRequest, ctx: RouteContext) {
-  const err = guard(req); if (err) return err;
+  const err = await guard(req); if (err) return err;
   const { id } = await ctx.params;
   const db = await loadSaaS();
   const idx = db.companies.findIndex(c => c.id === id);

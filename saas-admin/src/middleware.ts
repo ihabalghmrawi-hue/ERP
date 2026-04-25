@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_NAME, verifyAdminToken } from "@/lib/auth";
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // protect /dashboard and /api/* (except /api/auth/login)
   const isProtected =
     pathname.startsWith("/dashboard") ||
     (pathname.startsWith("/api/") &&
@@ -21,7 +20,7 @@ export function middleware(req: NextRequest) {
   }
 
   try {
-    verifyAdminToken(token);
+    await verifyAdminToken(token);
     return NextResponse.next();
   } catch {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "الجلسة منتهية" }, { status: 401 });
